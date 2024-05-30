@@ -33,6 +33,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Nullable
     private LocationManager locationManager;
     private FusedLocationSource locationSource;
+    private Marker marker; // 마커 변수 추가
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,10 +114,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         map.moveCamera(CameraUpdate.scrollTo(coord));
 
-        // Add a marker at the current location
-        Marker marker = new Marker();
-        marker.setPosition(coord);
-        marker.setMap(map);
+        // Add or update the marker at the current location
+        if (marker == null) {
+            marker = new Marker();
+            marker.setPosition(coord);
+            marker.setMap(map);
+        } else {
+            marker.setPosition(coord);
+        }
     }
 
     @Override
@@ -140,11 +145,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         LatLng initialPosition = new LatLng(37.5670135, 126.9783740);
         CameraUpdate cameraUpdate = CameraUpdate.scrollTo(initialPosition);
         naverMap.moveCamera(cameraUpdate);
-
-        // Add a marker at the initial position
-        Marker initialMarker = new Marker();
-        initialMarker.setPosition(initialPosition);
-        initialMarker.setMap(naverMap);
 
         // UI settings for location button
         naverMap.getUiSettings().setLocationButtonEnabled(true);
