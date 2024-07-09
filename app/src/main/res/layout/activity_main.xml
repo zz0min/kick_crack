@@ -10,9 +10,43 @@
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/map_fragment"
         android:name="com.naver.maps.map.MapFragment"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toTopOf="@+id/controls_layout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="1.0"
         app:navermap_locationButtonEnabled="true"
         app:navermap_tiltGesturesEnabled="false" />
+
+    <LinearLayout
+        android:id="@+id/controls_layout"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <EditText
+            android:id="@+id/destination_input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Enter destination"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/find_route_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Find Route" />
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
