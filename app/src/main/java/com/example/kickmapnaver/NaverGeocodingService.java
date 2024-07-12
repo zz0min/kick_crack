@@ -9,7 +9,7 @@ public interface NaverGeocodingService {
     @GET("geocode")
     Call<GeocodingResponse> getCoordinates(
             @Header("5lfe49e4je") String clientId,
-            @Header("wcuq8VQDoJIv2LOtzhhuo7pN8lqAlRcxDmoU4kls") String clientSecret,
+            @Header("Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG") String clientSecret,
             @Query("query") String query
     );
 }
