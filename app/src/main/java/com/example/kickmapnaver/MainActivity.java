@@ -10,19 +10,23 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.naver.maps.map.CameraUpdate;
+import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.MapFragment;
 import com.naver.maps.map.NaverMap;
 import com.naver.maps.map.OnMapReadyCallback;
 import com.naver.maps.map.UiSettings;
+import com.naver.maps.map.overlay.LocationOverlay;
 import com.naver.maps.map.util.FusedLocationSource;
 import com.naver.maps.map.overlay.Marker;
 import com.naver.maps.map.overlay.PathOverlay;
@@ -39,21 +43,24 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final int SEARCH_RESULT_REQUEST_CODE = 1;
+    private static final String TAG = "MainActivity";
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
     private NaverMap naverMap;
+    private FusedLocationSource locationSource;
+    private FusedLocationProviderClient fusedLocationClient;
+    private LocationCallback locationCallback;
     private String startPointCoords = "";
     private String targetPointCoords = "";
     private PathOverlay path = new PathOverlay();
     private Marker currentLocationMarker = new Marker();
-    private FusedLocationProviderClient fusedLocationClient;
-    private FusedLocationSource locationSource;
-    private static final String TAG = "MainActivity";
-    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
     private LatLng currentLocation;
+    private boolean isCameraUpdating = false;
+    private boolean isRouteDisplayed = false;
+    private boolean isCurrentLocationClicked = false;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,6 +76,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         locationSource = new FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                if (locationResult == null) {
+                    return;
+                }
+                for (Location location : locationResult.getLocations()) {
+                    LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                    startPointCoords = latLng.longitude + "," + latLng.latitude;
+                    updateCurrentLocationMarker(latLng);
+                }
+            }
+        };
 
         // 검색 버튼 클릭 이벤트
         Button searchButton = findViewById(R.id.search_button);
@@ -87,11 +108,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Button currentLocationButton = findViewById(R.id.current_location_button);
         currentLocationButton.setOnClickListener(v -> {
             if (currentLocation != null) {
+                isRouteDisplayed = false;
+                isCurrentLocationClicked = true;
                 naverMap.moveCamera(CameraUpdate.scrollTo(currentLocation));
             } else {
                 Log.e(TAG, "현재 위치를 사용할 수 없습니다.");
             }
         });
+
+
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -100,6 +125,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     LOCATION_PERMISSION_REQUEST_CODE);
         } else {
             getCurrentLocation();
+            startLocationUpdates();
         }
     }
 
@@ -111,6 +137,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 getCurrentLocation();
+                startLocationUpdates();
                 naverMap.setLocationSource(locationSource);
             } else {
                 Log.e(TAG, "위치 권한이 거부되었습니다.");
@@ -125,14 +152,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         @Override
                         public void onSuccess(Location location) {
                             if (location != null) {
-                                startPointCoords = location.getLongitude() + "," + location.getLatitude();
-                                Log.d(TAG, "현재 위치: " + startPointCoords);
-
-                                currentLocation = new LatLng(location.getLatitude(), location.getLongitude());
-                                currentLocationMarker.setPosition(currentLocation);
-                                currentLocationMarker.setMap(naverMap);
-
-                                naverMap.moveCamera(CameraUpdate.scrollTo(currentLocation)); // 현재 위치로 카메라 이동
+                                LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                                startPointCoords = latLng.longitude + "," + latLng.latitude;
+                                updateCurrentLocationMarker(latLng);
+                                naverMap.moveCamera(CameraUpdate.scrollTo(latLng)); // 현재 위치로 카메라 이동
                             } else {
                                 Log.e(TAG, "현재 위치를 가져올 수 없습니다.");
                             }
@@ -140,6 +163,58 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     });
         } catch (SecurityException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void startLocationUpdates() {
+        LocationRequest locationRequest = LocationRequest.create();
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        locationRequest.setInterval(10000);
+        locationRequest.setFastestInterval(5000);
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        } else {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
+        }
+    }
+
+    private void updateCurrentLocationMarker(LatLng latLng) {
+        if (currentLocationMarker != null) {
+            currentLocationMarker.setMap(null); // 기존 마커 제거
+        }
+        currentLocation = latLng;
+        currentLocationMarker.setPosition(latLng);
+        currentLocationMarker.setMap(naverMap); // 새로운 마커 추가
+        showRoute(); // 새로운 경로 그리기
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        fusedLocationClient.removeLocationUpdates(locationCallback);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
+            if (data != null) {
+                String selectedPlace = data.getStringExtra("selectedPlace");
+                geocodeSelectedLocation(selectedPlace);
+            }
         }
     }
 
@@ -154,14 +229,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         uiSettings.setZoomControlEnabled(true); // 확대/축소 버튼 활성화
         uiSettings.setLocationButtonEnabled(true); // 위치 버튼 활성화
 
-        //naverMap.setLocationSource(locationSource);
-        //naverMap.setLocationTrackingMode(NaverMap.LocationTrackingMode.Follow);
+        naverMap.setLocationSource(locationSource);
+        naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
+
+        // 위치 오버레이 설정
+        LocationOverlay locationOverlay = naverMap.getLocationOverlay();
+        locationOverlay.setVisible(true);
 
         naverMap.addOnCameraIdleListener(() -> {
-            startPointCoords = naverMap.getCameraPosition().target.longitude + "," + naverMap.getCameraPosition().target.latitude;
-            Log.d(TAG, "startPointCoords: " + startPointCoords);
+            if (!isCameraUpdating) {
+                if (!isRouteDisplayed || isCurrentLocationClicked) {
+                    startPointCoords = naverMap.getCameraPosition().target.longitude + "," + naverMap.getCameraPosition().target.latitude;
+                    Log.d(TAG, "startPointCoords: " + startPointCoords);
+                }
+            }
         });
     }
+
+
 
     private void geocodeLocation(String query) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
@@ -195,17 +280,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
             }
         });
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
-            if (data != null) {
-                String selectedPlace = data.getStringExtra("selectedPlace");
-                geocodeSelectedLocation(selectedPlace);
-            }
-        }
     }
 
     private void geocodeSelectedLocation(String address) {
@@ -290,9 +364,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         Log.d(TAG, "경로 설정 완료: " + coords.toString());
 
                         // 경로가 표시되도록 카메라를 이동
-                        if (!coords.isEmpty()) {
+                        if (!coords.isEmpty() && !isCurrentLocationClicked) {
                             LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
-                            naverMap.moveCamera(CameraUpdate.fitBounds(bounds));
+                            isCameraUpdating = true;
+                            isRouteDisplayed = true;
+                            naverMap.moveCamera(CameraUpdate.fitBounds(bounds).finishCallback(() -> isCameraUpdating = false));
                         }
                     } catch (JSONException e) {
                         e.printStackTrace();
@@ -302,6 +378,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
     }
+
+
 
     private void directionCallRequest(String start, String goal, Callback callback) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving?start=" + start + "&goal=" + goal + "&option=trafast";
