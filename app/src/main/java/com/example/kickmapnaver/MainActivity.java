@@ -1,24 +1,29 @@
 package com.example.kickmapnaver;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.naver.maps.map.CameraUpdate;
-import com.naver.maps.map.MapView;
+import com.naver.maps.map.MapFragment;
 import com.naver.maps.map.NaverMap;
 import com.naver.maps.map.OnMapReadyCallback;
 import com.naver.maps.map.UiSettings;
+import com.naver.maps.map.util.FusedLocationSource;
 import com.naver.maps.map.overlay.Marker;
 import com.naver.maps.map.overlay.PathOverlay;
 import com.naver.maps.geometry.LatLng;
@@ -34,15 +39,18 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
+    private static final int SEARCH_RESULT_REQUEST_CODE = 1;
     private NaverMap naverMap;
-    private MapView mapView;
     private String startPointCoords = "";
     private String targetPointCoords = "";
     private PathOverlay path = new PathOverlay();
     private Marker currentLocationMarker = new Marker();
     private FusedLocationProviderClient fusedLocationClient;
+    private FusedLocationSource locationSource;
     private static final String TAG = "MainActivity";
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
     private LatLng currentLocation;
@@ -52,10 +60,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mapView = findViewById(R.id.map_view);
-        mapView.onCreate(savedInstanceState);
-        mapView.getMapAsync(this);
+        MapFragment mapFragment = (MapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+        if (mapFragment == null) {
+            mapFragment = MapFragment.newInstance();
+            getSupportFragmentManager().beginTransaction().add(R.id.map, mapFragment).commit();
+        }
+        mapFragment.getMapAsync(this);
 
+        locationSource = new FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         // 검색 버튼 클릭 이벤트
@@ -99,6 +111,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 getCurrentLocation();
+                naverMap.setLocationSource(locationSource);
             } else {
                 Log.e(TAG, "위치 권한이 거부되었습니다.");
             }
@@ -134,12 +147,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(@NonNull NaverMap map) {
         naverMap = map;
 
-        // 초기에 마커를 설정하지 않습니다.
-        // 마커는 현재 위치를 가져온 후 설정됩니다.
+        // 기본 제공 UI 설정
         UiSettings uiSettings = naverMap.getUiSettings();
         uiSettings.setCompassEnabled(true); // 나침반 활성화
-        uiSettings.setLocationButtonEnabled(true); // 위치 버튼 활성화
         uiSettings.setScaleBarEnabled(true); // 축척 바 활성화
+        uiSettings.setZoomControlEnabled(true); // 확대/축소 버튼 활성화
+        uiSettings.setLocationButtonEnabled(true); // 위치 버튼 활성화
+
+        //naverMap.setLocationSource(locationSource);
+        //naverMap.setLocationTrackingMode(NaverMap.LocationTrackingMode.Follow);
+
         naverMap.addOnCameraIdleListener(() -> {
             startPointCoords = naverMap.getCameraPosition().target.longitude + "," + naverMap.getCameraPosition().target.latitude;
             Log.d(TAG, "startPointCoords: " + startPointCoords);
@@ -148,6 +165,51 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void geocodeLocation(String query) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
+                    return;
+                }
+
+                String responseData = response.body().string();
+                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
+
+                // 새로운 액티비티로 응답 데이터를 전달
+                Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
+                intent.putExtra("responseData", responseData);
+                startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
+            }
+        });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
+            if (data != null) {
+                String selectedPlace = data.getStringExtra("selectedPlace");
+                geocodeSelectedLocation(selectedPlace);
+            }
+        }
+    }
+
+    private void geocodeSelectedLocation(String address) {
+        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + address;
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
@@ -245,8 +307,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         String url = "https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving?start=" + start + "&goal=" + goal + "&option=trafast";
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
-
-
                 .url(url)
                 .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 정확한 클라이언트 ID
                 .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 정확한 Secret 키
