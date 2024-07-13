@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             EditText searchText = findViewById(R.id.search_text);
             String query = searchText.getText().toString().trim();
             if (!query.isEmpty()) {
-                geocodeLocation(query);
+                searchPlace(query);
             } else {
                 Log.e(TAG, "검색어가 비어 있습니다.");
                 searchText.setError("검색어를 입력해주세요.");
@@ -244,8 +244,97 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
             }
         });
+
+        // 지도 클릭 이벤트 추가
+        naverMap.setOnMapClickListener((point, coord) -> {
+            Log.d(TAG, "지도 클릭: " + coord.latitude + ", " + coord.longitude);
+            getPlaceInfo(coord.latitude, coord.longitude);
+        });
     }
 
+    private void getPlaceInfo(double latitude, double longitude) {
+        String coords = longitude + "," + latitude;
+        String url = "https://naveropenapi.apigw.ntruss.com/map-reversegeocode/v2/gc?coords=" + coords + "&orders=addr,roadaddr&output=json";
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG") // 실제 비밀 키 입력
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+                Log.e(TAG, "역지오코딩 요청 실패: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "역지오코딩 응답 실패: " + response.code() + " " + response.message());
+                    return;
+                }
+
+                String responseData = response.body().string();
+                Log.d(TAG, "역지오코딩 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
+                try {
+                    JSONObject jsonResponse = new JSONObject(responseData);
+                    JSONArray results = jsonResponse.getJSONArray("results");
+                    if (results.length() > 0) {
+                        JSONObject result = results.getJSONObject(0);
+                        String address = result.getJSONObject("region").getJSONObject("area1").getString("name") + " " +
+                                result.getJSONObject("region").getJSONObject("area2").getString("name") + " " +
+                                result.getJSONObject("region").getJSONObject("area3").getString("name") + " " +
+                                result.getJSONObject("region").getJSONObject("area4").getString("name");
+                        Log.d(TAG, "주소: " + address);
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "주소: " + address, Toast.LENGTH_LONG).show();
+                        });
+                    } else {
+                        Log.e(TAG, "역지오코딩 결과가 없습니다.");
+                    }
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                    Log.e(TAG, "JSON 파싱 실패: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    private void searchPlace(String query) {
+        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
+                    return;
+                }
+
+                String responseData = response.body().string();
+                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
+
+                // 새로운 액티비티로 응답 데이터를 전달
+                Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
+                intent.putExtra("responseData", responseData);
+                startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
+            }
+        });
+    }
 
 
     private void geocodeLocation(String query) {
@@ -281,6 +370,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
     }
+
 
     private void geocodeSelectedLocation(String address) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + address;
