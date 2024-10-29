@@ -67,7 +67,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothSocket bluetoothSocket;
     private BluetoothServerSocket bluetoothServerSocket;
-    private TextView crackDetectionTextView, tiltTextView, impactTextView;
+    private TextView crackDetectionTextView, tiltTextView, impactTextView, speedTextView;
 
     private NaverMap naverMap;
     private FusedLocationSource locationSource;
@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
         tiltTextView = findViewById(R.id.tiltTextView);
         impactTextView = findViewById(R.id.impactTextView);
-
+        speedTextView = findViewById(R.id.speedTextView);
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         Button connectButton = findViewById(R.id.connectbutton);
@@ -461,6 +461,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                 break;
                             case '3':
                                 runOnUiThread(() -> impactTextView.setText("충격량: " + content));
+                                break;
+                            case '4':
+                                runOnUiThread(() -> speedTextView.setText("속도: " + content));
                                 break;
                             default:
                                 Log.w(TAG, "Unknown message type received: " + message);
