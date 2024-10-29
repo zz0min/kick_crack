@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -108,6 +109,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         Button disconnectButton = findViewById(R.id.disconnectbutton);
         disconnectButton.setOnClickListener(v -> disconnectFromDevice());
+
+        // 검색 버튼 클릭 이벤트
+        Button searchButton = findViewById(R.id.search_button);
+        searchButton.setOnClickListener(v -> {
+            EditText searchText = findViewById(R.id.search_text);
+            String query = searchText.getText().toString().trim();
+            if (!query.isEmpty()) {
+                searchPlace(query);
+            } else {
+                Log.e(TAG, "검색어가 비어 있습니다.");
+                searchText.setError("검색어를 입력해주세요.");
+            }
+        });
+
+        // 현재 위치 버튼 클릭 이벤트
+        Button currentLocationButton = findViewById(R.id.current_location_button);
+        currentLocationButton.setOnClickListener(v -> {
+            if (currentLocation != null) {
+                isRouteDisplayed = false;
+                isCurrentLocationClicked = true;
+                naverMap.moveCamera(CameraUpdate.scrollTo(currentLocation));
+            } else {
+                Log.e(TAG, "현재 위치를 사용할 수 없습니다.");
+            }
+        });
     }
 
     private void initMapUI() {
@@ -226,6 +252,40 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         return true; // 모든 권한이 허용된 경우
 
+    }
+
+    private void searchPlace(String query) {
+        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
+        OkHttpClient client = new OkHttpClient();
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                e.printStackTrace();
+                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
+                    return;
+                }
+
+                String responseData = response.body().string();
+                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
+
+                // 새로운 액티비티로 응답 데이터를 전달
+                Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
+                intent.putExtra("responseData", responseData);
+                startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
+            }
+        });
     }
 
     @Override
