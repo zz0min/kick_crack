@@ -40,6 +40,7 @@ import com.naver.maps.map.overlay.Marker;
 import com.naver.maps.map.overlay.PathOverlay;
 import com.naver.maps.map.util.FusedLocationSource;
 
+import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -476,6 +477,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
+            if (data != null) {
+                String selectedPlace = data.getStringExtra("selectedPlace");
+                geocodeSelectedLocation(selectedPlace);
+            }
+        }
+    }
 
     private void disconnectFromDevice() {
         try {
