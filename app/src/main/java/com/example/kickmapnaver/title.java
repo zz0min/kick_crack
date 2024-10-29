@@ -16,7 +16,8 @@ public class title extends AppCompatActivity {
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
-                Intent intent = new Intent(title.this, MainActivity.class);
+                Intent intent;
+                intent = new Intent(title.this, MainActivity.class);
                 startActivity(intent);
                 finish();
             }

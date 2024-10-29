@@ -5,19 +5,20 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
+    <!-- 지도 Fragment -->
     <fragment
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
         android:id="@+id/map"
-        android:name="com.naver.maps.map.MapFragment" />
+        android:name="com.naver.maps.map.MapFragment"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
+    <!-- 검색창 및 버튼 -->
     <EditText
         android:id="@+id/search_text"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_toStartOf="@id/search_button"
         android:layout_alignParentStart="true"
-        android:layout_toLeftOf="@id/search_button"
         android:hint="주소를 입력해주세요" />
 
     <Button
@@ -27,6 +28,7 @@
         android:layout_alignParentEnd="true"
         android:text="검색" />
 
+    <!-- 현재 위치 버튼 -->
     <Button
         android:id="@+id/current_location_button"
         android:layout_width="wrap_content"
@@ -36,11 +38,60 @@
         android:layout_margin="16dp"
         android:layout_alignParentEnd="true" />
 
+    <!-- Bluetooth 연결 및 수신 상태 표시 레이아웃 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentStart="true"
+        android:layout_marginBottom="100dp">
+
+        <TextView
+            android:id="@+id/crackDetectionTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="균열 탐지:"
+            android:textSize="18sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/tiltTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="기울기:"
+            android:textSize="18sp"
+            android:padding="8dp" />
+
+        <TextView
+            android:id="@+id/impactTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="충격량:"
+            android:textSize="18sp"
+            android:padding="8dp" />
+
+        <!-- Bluetooth 연결 버튼 -->
+        <Button
+            android:id="@+id/connectbutton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Connect" />
+
+        <Button
+            android:id="@+id/disconnectbutton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Disconnect" />
+    </LinearLayout>
+
+    <!-- 검색 결과를 보여줄 RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/search_text"
-        android:layout_above="@id/current_location_button"/>
+        android:layout_above="@id/current_location_button" />
 
 </RelativeLayout>

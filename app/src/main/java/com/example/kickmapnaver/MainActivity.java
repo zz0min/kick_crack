@@ -1,25 +1,33 @@
 package com.example.kickmapnaver;
 
 import android.Manifest;
+import android.app.AlertDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
+import android.bluetooth.BluetoothServerSocket;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
-import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.appcompat.app.AppCompatActivity;
+
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.naver.maps.geometry.LatLng;
+import com.naver.maps.geometry.LatLngBounds;
 import com.naver.maps.map.CameraUpdate;
 import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.MapFragment;
@@ -27,27 +35,39 @@ import com.naver.maps.map.NaverMap;
 import com.naver.maps.map.OnMapReadyCallback;
 import com.naver.maps.map.UiSettings;
 import com.naver.maps.map.overlay.LocationOverlay;
-import com.naver.maps.map.util.FusedLocationSource;
 import com.naver.maps.map.overlay.Marker;
 import com.naver.maps.map.overlay.PathOverlay;
-import com.naver.maps.geometry.LatLng;
-import com.naver.maps.geometry.LatLngBounds;
+import com.naver.maps.map.util.FusedLocationSource;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
-    private static final int SEARCH_RESULT_REQUEST_CODE = 1;
-    private static final String TAG = "MainActivity";
+    private static final String TAG = "BluetoothReceiver";
+    private static final String DEVICE_ADDRESS = "D8:3A:DD:1E:54:69";
+    private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+    private static final int REQUEST_BLUETOOTH_PERMISSIONS = 1;
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1000;
+    private static final int SEARCH_RESULT_REQUEST_CODE = 1;
+
+    private BluetoothAdapter bluetoothAdapter;
+    private BluetoothSocket bluetoothSocket;
+    private BluetoothServerSocket bluetoothServerSocket;
+    private TextView crackDetectionTextView, tiltTextView, impactTextView;
+
     private NaverMap naverMap;
     private FusedLocationSource locationSource;
     private FusedLocationProviderClient fusedLocationClient;
@@ -61,12 +81,36 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean isRouteDisplayed = false;
     private boolean isCurrentLocationClicked = false;
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        initBluetoothUI();
+        initMapUI();
+        initLocationUpdates();
+    }
+
+    private void initBluetoothUI() {
+        crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
+        tiltTextView = findViewById(R.id.tiltTextView);
+        impactTextView = findViewById(R.id.impactTextView);
+
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+
+        Button connectButton = findViewById(R.id.connectbutton);
+        connectButton.setOnClickListener(v -> {
+            if (checkAndRequestPermissions()) {
+                startServerSocket();
+                connectToDevice(DEVICE_ADDRESS);
+            }
+        });
+
+        Button disconnectButton = findViewById(R.id.disconnectbutton);
+        disconnectButton.setOnClickListener(v -> disconnectFromDevice());
+    }
+
+    private void initMapUI() {
         MapFragment mapFragment = (MapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         if (mapFragment == null) {
             mapFragment = MapFragment.newInstance();
@@ -76,72 +120,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         locationSource = new FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+    }
 
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                if (locationResult == null) {
-                    return;
-                }
-                for (Location location : locationResult.getLocations()) {
-                    LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-                    startPointCoords = latLng.longitude + "," + latLng.latitude;
-                    updateCurrentLocationMarker(latLng);
-                }
-            }
-        };
-
-        // 검색 버튼 클릭 이벤트
-        Button searchButton = findViewById(R.id.search_button);
-        searchButton.setOnClickListener(v -> {
-            EditText searchText = findViewById(R.id.search_text);
-            String query = searchText.getText().toString().trim();
-            if (!query.isEmpty()) {
-                searchPlace(query);
-            } else {
-                Log.e(TAG, "검색어가 비어 있습니다.");
-                searchText.setError("검색어를 입력해주세요.");
-            }
-        });
-
-        // 현재 위치 버튼 클릭 이벤트
-        Button currentLocationButton = findViewById(R.id.current_location_button);
-        currentLocationButton.setOnClickListener(v -> {
-            if (currentLocation != null) {
-                isRouteDisplayed = false;
-                isCurrentLocationClicked = true;
-                naverMap.moveCamera(CameraUpdate.scrollTo(currentLocation));
-            } else {
-                Log.e(TAG, "현재 위치를 사용할 수 없습니다.");
-            }
-        });
-
-
-
+    private void initLocationUpdates() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+                == PackageManager.PERMISSION_GRANTED) {
+            getCurrentLocation();
+            startLocationUpdates();
+        } else {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     LOCATION_PERMISSION_REQUEST_CODE);
-        } else {
-            getCurrentLocation();
-            startLocationUpdates();
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                getCurrentLocation();
-                startLocationUpdates();
-                naverMap.setLocationSource(locationSource);
-            } else {
-                Log.e(TAG, "위치 권한이 거부되었습니다.");
-            }
         }
     }
 
@@ -167,6 +156,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void startLocationUpdates() {
+        // locationCallback 초기화
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                if (locationResult == null) {
+                    return;
+                }
+                for (Location location : locationResult.getLocations()) {
+                    LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                    startPointCoords = latLng.longitude + "," + latLng.latitude;
+                    updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
+                }
+            }
+        };
+
         LocationRequest locationRequest = LocationRequest.create();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setInterval(10000);
@@ -192,30 +196,36 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         showRoute(); // 새로운 경로 그리기
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        fusedLocationClient.removeLocationUpdates(locationCallback);
-    }
+    private boolean checkAndRequestPermissions() {
+        String[] permissions;
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            startLocationUpdates();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions = new String[]{
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN
+            };
+        } else {
+            permissions = new String[]{
+                    Manifest.permission.BLUETOOTH,
+                    Manifest.permission.BLUETOOTH_ADMIN
+            };
         }
-    }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
-            if (data != null) {
-                String selectedPlace = data.getStringExtra("selectedPlace");
-                geocodeSelectedLocation(selectedPlace);
+        List<String> permissionsToRequest = new ArrayList<>();
+        for (String permission : permissions) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(permission);
             }
         }
+
+        if (!permissionsToRequest.isEmpty()) {
+            ActivityCompat.requestPermissions(this,
+                    permissionsToRequest.toArray(new String[0]),
+                    REQUEST_BLUETOOTH_PERMISSIONS);
+            return false; // 권한이 없어서 요청한 경우
+        }
+        return true; // 모든 권한이 허용된 경우
+
     }
 
     @Override
@@ -302,38 +312,119 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    private void searchPlace(String query) {
-        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder()
-                .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
-                .build();
-
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                e.printStackTrace();
-                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
+    private void startServerSocket() {
+        try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH_PERMISSIONS);
+                return; // 권한이 없으면 메서드 종료
             }
 
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
-                    return;
+            bluetoothServerSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("MyApp", MY_UUID);
+            new Thread(new AcceptConnectionTask()).start();
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to start server socket", e);
+        }
+    }
+    private class AcceptConnectionTask implements Runnable {
+        @Override
+        public void run() {
+            BluetoothSocket socket;
+            try {
+                Log.d(TAG, "Waiting for client to connect...");
+                socket = bluetoothServerSocket.accept();
+                if (socket != null) {
+                    bluetoothSocket = socket;
+                    Log.d(TAG, "Client connected");
+                    showConnectionSuccessDialog(); // 클라이언트가 연결되었을 때도 알림창 표시
+                    new Thread(new ReceiveMessageTask()).start();
+                    bluetoothServerSocket.close();
                 }
-
-                String responseData = response.body().string();
-                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
-
-                // 새로운 액티비티로 응답 데이터를 전달
-                Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
-                intent.putExtra("responseData", responseData);
-                startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
+            } catch (IOException e) {
+                Log.e(TAG, "Error accepting connection", e);
             }
+        }
+    }
+
+    private void connectToDevice(String address) {
+        BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
+        try {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH_PERMISSIONS);
+                return;
+            }
+
+            bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID);
+            bluetoothSocket.connect();
+            Log.d(TAG, "Connected to " + address);
+
+            showConnectionSuccessDialog(); // 연결 성공 시 알림창 표시
+            new Thread(new ReceiveMessageTask()).start();
+
+        } catch (IOException e) {
+            Log.e(TAG, "Connection failed", e);
+        }
+
+    }
+
+    private void showConnectionSuccessDialog() {
+        runOnUiThread(() -> {
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("Bluetooth 연결 성공")
+                    .setMessage("장치와 성공적으로 연결되었습니다.")
+                    .setPositiveButton("확인", (dialog, which) -> dialog.dismiss())
+                    .show();
         });
+    }
+
+    private class ReceiveMessageTask implements Runnable {
+        @Override
+        public void run() {
+            try {
+                InputStream inputStream = bluetoothSocket.getInputStream();
+                byte[] buffer = new byte[1024];
+                int bytes;
+
+                while (bluetoothSocket.isConnected()) {
+                    bytes = inputStream.read(buffer);
+                    if (bytes > 0) {
+                        String message = new String(buffer, 0, bytes);
+                        String content = message.substring(1);
+
+                        switch (message.charAt(0)) {
+                            case '1':
+                                runOnUiThread(() -> crackDetectionTextView.setText("균열 탐지: " + content));
+                                break;
+                            case '2':
+                                runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
+                                break;
+                            case '3':
+                                runOnUiThread(() -> impactTextView.setText("충격량: " + content));
+                                break;
+                            default:
+                                Log.w(TAG, "Unknown message type received: " + message);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                Log.e(TAG, "Error reading message", e);
+            }
+        }
+    }
+
+
+    private void disconnectFromDevice() {
+        try {
+            if (bluetoothSocket != null && bluetoothSocket.isConnected()) {
+                bluetoothSocket.close();
+                bluetoothSocket = null;
+                Toast.makeText(this, "Bluetooth 연결이 해제되었습니다.", Toast.LENGTH_SHORT).show();
+                Log.d(TAG, "Bluetooth connection closed");
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error closing Bluetooth socket", e);
+        }
     }
 
 
@@ -469,8 +560,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-
-
     private void directionCallRequest(String start, String goal, Callback callback) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-direction/v1/driving?start=" + start + "&goal=" + goal + "&option=trafast";
         OkHttpClient client = new OkHttpClient();
@@ -483,4 +572,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Log.d(TAG, "directionCallRequest - URL: " + url);
         client.newCall(request).enqueue(callback);
     }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        disconnectFromDevice();
+        try {
+            if (bluetoothServerSocket != null) {
+                bluetoothServerSocket.close();
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error closing server socket", e);
+        }
+    }
 }
+

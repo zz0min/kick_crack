@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'com.example.kickmapnaver'
+    namespace "com.example.kickmapnaver"
     compileSdk 34
 
     buildFeatures {
