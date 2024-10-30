@@ -12,21 +12,63 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 검색창 및 버튼 -->
-    <EditText
-        android:id="@+id/search_text"
-        android:layout_width="0dp"
+    <!-- 검색창과 검색 버튼 -->
+    <LinearLayout
+        android:id="@+id/search_bar"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_toStartOf="@id/search_button"
-        android:layout_alignParentStart="true"
-        android:hint="주소를 입력해주세요" />
+        android:orientation="horizontal"
+        android:background="#4CAF50"
+        android:padding="8dp"
+        android:layout_alignParentTop="true">
 
-    <Button
-        android:id="@+id/search_button"
+        <EditText
+            android:id="@+id/search_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="주소를 입력해주세요"
+            android:background="@android:color/white"
+            android:padding="8dp" />
+
+        <Button
+            android:id="@+id/search_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="검색"
+            android:textStyle="bold"
+            android:textSize="18sp"
+            android:textColor="@android:color/white"
+            android:background="@android:color/transparent"
+            android:padding="8dp" />
+        <!-- 텍스트 볼드 처리 및 폰트 크기 조정 -->
+
+    </LinearLayout>
+
+    <!-- 옵션 표시/숨김 버튼 -->
+    <ImageButton
+        android:id="@+id/toggleButton"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_below="@id/search_bar"
+        android:layout_alignParentStart="true"
+        android:layout_marginStart="8dp"
+        android:layout_marginTop="8dp"
+        android:background="@android:color/transparent"
+        android:src="@android:drawable/ic_menu_more"
+        android:contentDescription="Toggle Options" />
+
+    <!-- 속도 텍스트 -->
+    <TextView
+        android:id="@+id/speedTextView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_alignParentEnd="true"
-        android:text="검색" />
+        android:layout_below="@id/search_bar"
+        android:layout_marginTop="8dp"
+        android:layout_centerHorizontal="true"
+        android:text="0 km/h"
+        android:textSize="36sp"
+        android:textColor="#000" />
 
     <!-- 현재 위치 버튼 -->
     <Button
@@ -34,71 +76,90 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="현재 위치"
+        android:textColor="@android:color/white"
+        android:backgroundTint="#4CAF50"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="8dp"
+        android:layout_alignStart="@+id/map"
+        android:layout_alignBottom="@+id/map" />
+
+    <!-- Connect, Disconnect 버튼을 포함하는 LinearLayout -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_alignParentEnd="true"
         android:layout_alignParentBottom="true"
         android:layout_margin="16dp"
-        android:layout_alignParentEnd="true" />
+        android:gravity="center">
 
-    <!-- Bluetooth 연결 및 수신 상태 표시 레이아웃 -->
+        <Button
+            android:id="@+id/connectbutton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Connect"
+            android:textColor="@android:color/black"
+            android:backgroundTint="@android:color/white"
+            android:layout_marginBottom="8dp"
+            android:padding="8dp" />
+
+        <Button
+            android:id="@+id/disconnectbutton"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Disconnect"
+            android:textColor="@android:color/white"
+            android:backgroundTint="#B0B0B0"
+            android:padding="8dp" />
+    </LinearLayout>
+
+    <!-- 추가 정보 레이아웃 -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:id="@+id/additionalInfoLayout"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp"
-        android:layout_alignParentBottom="true"
         android:layout_alignParentStart="true"
-        android:layout_marginBottom="100dp">
+        android:layout_marginStart="8dp"
+        android:layout_below="@id/toggleButton"
+        android:visibility="gone">
 
         <TextView
             android:id="@+id/crackDetectionTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="균열 탐지:"
-            android:textSize="18sp"
-            android:padding="8dp" />
+            android:text="균열 탐지: -"
+            android:textSize="18sp" />
 
         <TextView
             android:id="@+id/tiltTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="기울기:"
-            android:textSize="18sp"
-            android:padding="8dp" />
+            android:text="기울기: -"
+            android:textSize="18sp" />
 
         <TextView
             android:id="@+id/impactTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="충격량:"
-            android:textSize="18sp"
-            android:padding="8dp" />
+            android:text="충격량: -"
+            android:textSize="18sp" />
 
         <TextView
-            android:id="@+id/speedTextView"
+            android:id="@+id/estimatedTimeTextView"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="속도:"
-            android:textSize="18sp"
-            android:padding="8dp" />
-        <!-- Bluetooth 연결 버튼 -->
-        <Button
-            android:id="@+id/connectbutton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Connect" />
-
-        <Button
-            android:id="@+id/disconnectbutton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Disconnect" />
+            android:text="예상 소요 시간: -"
+            android:textSize="18sp" />
     </LinearLayout>
 
-    <!-- 검색 결과를 보여줄 RecyclerView -->
+    <!-- 검색 결과 RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/search_text"
+        android:layout_below="@id/search_bar"
         android:layout_above="@id/current_location_button" />
 
 </RelativeLayout>

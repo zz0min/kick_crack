@@ -12,8 +12,11 @@ import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -68,7 +71,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothSocket bluetoothSocket;
     private BluetoothServerSocket bluetoothServerSocket;
-    private TextView crackDetectionTextView, tiltTextView, impactTextView, speedTextView;
+    private LinearLayout additionalInfoLayout;
+    private TextView crackDetectionTextView, tiltTextView, impactTextView, speedTextView, estimatedTimeTextView;
+    private double totalDistanceInMeters = 0.0;
 
     private NaverMap naverMap;
     private FusedLocationSource locationSource;
@@ -82,16 +87,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean isCameraUpdating = false;
     private boolean isRouteDisplayed = false;
     private boolean isCurrentLocationClicked = false;
+    private boolean isInfoVisible = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        additionalInfoLayout = findViewById(R.id.additionalInfoLayout);
+        ImageButton toggleButton = findViewById(R.id.toggleButton);
+
+        toggleButton.setOnClickListener(v -> {
+            if (isInfoVisible) {
+                additionalInfoLayout.setVisibility(View.GONE);
+                toggleButton.setImageResource(android.R.drawable.ic_menu_more); // 아이콘 변경
+            } else {
+                additionalInfoLayout.setVisibility(View.VISIBLE);
+                toggleButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel); // 아이콘 변경
+            }
+            isInfoVisible = !isInfoVisible;
+        });
+
+        // Bluetooth 초기화 및 위치 업데이트
         initBluetoothUI();
         initMapUI();
         initLocationUpdates();
     }
+
 
     private void initBluetoothUI() {
         crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
@@ -99,6 +121,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         impactTextView = findViewById(R.id.impactTextView);
         speedTextView = findViewById(R.id.speedTextView);
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView);
 
         Button connectButton = findViewById(R.id.connectbutton);
         connectButton.setOnClickListener(v -> {
@@ -391,22 +414,45 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private class AcceptConnectionTask implements Runnable {
         @Override
         public void run() {
-            BluetoothSocket socket;
             try {
-                Log.d(TAG, "Waiting for client to connect...");
-                socket = bluetoothServerSocket.accept();
-                if (socket != null) {
-                    bluetoothSocket = socket;
-                    Log.d(TAG, "Client connected");
-                    showConnectionSuccessDialog(); // 클라이언트가 연결되었을 때도 알림창 표시
-                    new Thread(new ReceiveMessageTask()).start();
-                    bluetoothServerSocket.close();
+                InputStream inputStream = bluetoothSocket.getInputStream();
+                byte[] buffer = new byte[1024];
+                int bytes;
+
+                while (bluetoothSocket.isConnected()) {
+                    bytes = inputStream.read(buffer);
+                    if (bytes > 0) {
+                        String message = new String(buffer, 0, bytes);
+                        String content = message.substring(1);
+
+                        switch (message.charAt(0)) {
+                            case '1':
+                                runOnUiThread(() -> crackDetectionTextView.setText("균열 탐지: " + content));
+                                break;
+                            case '2':
+                                runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
+                                break;
+                            case '3':
+                                runOnUiThread(() -> impactTextView.setText("충격량: " + content));
+                                break;
+                            case '4':
+                                runOnUiThread(() -> {
+                                    speedTextView.setText("속도: " + content + " km/h");
+                                    double speed = Double.parseDouble(content);
+                                    updateEstimatedTime(speed);
+                                });
+                                break;
+                            default:
+                                Log.w(TAG, "Unknown message type received: " + message);
+                        }
+                    }
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Error accepting connection", e);
+                Log.e(TAG, "Error reading message", e);
             }
         }
     }
+
 
     private void connectToDevice(String address) {
         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
@@ -600,7 +646,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 String responseData = response.body().string();
-                // 경로 데이터를 파싱하여 PathOverlay에 추가
                 runOnUiThread(() -> {
                     try {
                         JSONObject jsonResponse = new JSONObject(responseData);
@@ -608,18 +653,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         JSONArray pathData = route.getJSONObject(0).getJSONArray("path");
 
                         List<LatLng> coords = new ArrayList<>();
+                        totalDistanceInMeters = 0.0; // 거리 초기화
+
                         for (int i = 0; i < pathData.length(); i++) {
                             JSONArray coord = pathData.getJSONArray(i);
-                            coords.add(new LatLng(coord.getDouble(1), coord.getDouble(0)));
+                            LatLng latLng = new LatLng(coord.getDouble(1), coord.getDouble(0));
+                            coords.add(latLng);
+
+                            if (i > 0) {
+                                totalDistanceInMeters += calculateDistance(coords.get(i - 1), latLng);
+                            }
                         }
 
                         path.setCoords(coords);
-                        path.setColor(0xFFFF0000); // 빨간색
-                        path.setWidth(10); // 경로 두께 설정
+                        path.setColor(0xFFFF0000);
+                        path.setWidth(10);
                         path.setMap(naverMap);
                         Log.d(TAG, "경로 설정 완료: " + coords.toString());
 
-                        // 경로가 표시되도록 카메라를 이동
                         if (!coords.isEmpty() && !isCurrentLocationClicked) {
                             LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
                             isCameraUpdating = true;
@@ -633,6 +684,29 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 });
             }
         });
+    }
+
+    // 두 지점 간 거리 계산 (미터 단위)
+    private double calculateDistance(LatLng start, LatLng end) {
+        double earthRadius = 6371000; // 지구 반지름 (미터)
+        double dLat = Math.toRadians(end.latitude - start.latitude);
+        double dLng = Math.toRadians(end.longitude - start.longitude);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(start.latitude)) * Math.cos(Math.toRadians(end.latitude)) *
+                        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return earthRadius * c;
+    }
+
+    // 예상 소요 시간 업데이트
+    private void updateEstimatedTime(double speedKmh) {
+        if (speedKmh > 0) {
+            double timeInHours = (totalDistanceInMeters / 1000) / speedKmh;
+            int minutes = (int) (timeInHours * 60);
+            runOnUiThread(() -> estimatedTimeTextView.setText("예상 소요 시간: " + minutes + "분"));
+        } else {
+            runOnUiThread(() -> estimatedTimeTextView.setText("예상 소요 시간: 계산 불가"));
+        }
     }
 
     private void directionCallRequest(String start, String goal, Callback callback) {
@@ -661,4 +735,3 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 }
-
