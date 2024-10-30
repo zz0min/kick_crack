@@ -43,7 +43,6 @@ import com.naver.maps.map.overlay.Marker;
 import com.naver.maps.map.overlay.PathOverlay;
 import com.naver.maps.map.util.FusedLocationSource;
 
-import org.jetbrains.annotations.Nullable;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -86,7 +85,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private LatLng currentLocation;
     private boolean isCameraUpdating = false;
     private boolean isRouteDisplayed = false;
-    private boolean isCurrentLocationClicked = false;
     private boolean isInfoVisible = false;
 
     @Override
@@ -100,20 +98,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         toggleButton.setOnClickListener(v -> {
             if (isInfoVisible) {
                 additionalInfoLayout.setVisibility(View.GONE);
-                toggleButton.setImageResource(android.R.drawable.ic_menu_more); // 아이콘 변경
+                toggleButton.setImageResource(android.R.drawable.ic_menu_more);
             } else {
                 additionalInfoLayout.setVisibility(View.VISIBLE);
-                toggleButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel); // 아이콘 변경
+                toggleButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
             }
             isInfoVisible = !isInfoVisible;
         });
 
-        // Bluetooth 초기화 및 위치 업데이트
         initBluetoothUI();
         initMapUI();
-        initLocationUpdates();
     }
-
 
     private void initBluetoothUI() {
         crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
@@ -134,7 +129,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         Button disconnectButton = findViewById(R.id.disconnectbutton);
         disconnectButton.setOnClickListener(v -> disconnectFromDevice());
 
-        // 검색 버튼 클릭 이벤트
         Button searchButton = findViewById(R.id.search_button);
         searchButton.setOnClickListener(v -> {
             EditText searchText = findViewById(R.id.search_text);
@@ -144,18 +138,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             } else {
                 Log.e(TAG, "검색어가 비어 있습니다.");
                 searchText.setError("검색어를 입력해주세요.");
-            }
-        });
-
-        // 현재 위치 버튼 클릭 이벤트
-        Button currentLocationButton = findViewById(R.id.current_location_button);
-        currentLocationButton.setOnClickListener(v -> {
-            if (currentLocation != null) {
-                isRouteDisplayed = false;
-                isCurrentLocationClicked = true;
-                naverMap.moveCamera(CameraUpdate.scrollTo(currentLocation));
-            } else {
-                Log.e(TAG, "현재 위치를 사용할 수 없습니다.");
             }
         });
     }
@@ -170,80 +152,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         locationSource = new FusedLocationSource(this, LOCATION_PERMISSION_REQUEST_CODE);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-    }
-
-    private void initLocationUpdates() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            getCurrentLocation();
-            startLocationUpdates();
-        } else {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    LOCATION_PERMISSION_REQUEST_CODE);
-        }
-    }
-
-    private void getCurrentLocation() {
-        try {
-            fusedLocationClient.getLastLocation()
-                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
-                        @Override
-                        public void onSuccess(Location location) {
-                            if (location != null) {
-                                LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-                                startPointCoords = latLng.longitude + "," + latLng.latitude;
-                                updateCurrentLocationMarker(latLng);
-                                naverMap.moveCamera(CameraUpdate.scrollTo(latLng)); // 현재 위치로 카메라 이동
-                            } else {
-                                Log.e(TAG, "현재 위치를 가져올 수 없습니다.");
-                            }
-                        }
-                    });
-        } catch (SecurityException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void startLocationUpdates() {
-        // locationCallback 초기화
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                if (locationResult == null) {
-                    return;
-                }
-                for (Location location : locationResult.getLocations()) {
-                    LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-                    startPointCoords = latLng.longitude + "," + latLng.latitude;
-                    updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
-                }
-            }
-        };
-
-        LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(10000);
-        locationRequest.setFastestInterval(5000);
-
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    LOCATION_PERMISSION_REQUEST_CODE);
-        } else {
-            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
-        }
-    }
-
-    private void updateCurrentLocationMarker(LatLng latLng) {
-        if (currentLocationMarker != null) {
-            currentLocationMarker.setMap(null); // 기존 마커 제거
-        }
-        currentLocation = latLng;
-        currentLocationMarker.setPosition(latLng);
-        currentLocationMarker.setMap(naverMap); // 새로운 마커 추가
-        showRoute(); // 새로운 경로 그리기
     }
 
     private boolean checkAndRequestPermissions() {
@@ -272,10 +180,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             ActivityCompat.requestPermissions(this,
                     permissionsToRequest.toArray(new String[0]),
                     REQUEST_BLUETOOTH_PERMISSIONS);
-            return false; // 권한이 없어서 요청한 경우
+            return false;
         }
-        return true; // 모든 권한이 허용된 경우
-
+        return true;
     }
 
     private void searchPlace(String query) {
@@ -283,8 +190,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
@@ -302,9 +209,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 String responseData = response.body().string();
-                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
-
-                // 새로운 액티비티로 응답 데이터를 전달
                 Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
                 intent.putExtra("responseData", responseData);
                 startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
@@ -316,35 +220,86 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(@NonNull NaverMap map) {
         naverMap = map;
 
-        // 기본 제공 UI 설정
+        // UI 설정
         UiSettings uiSettings = naverMap.getUiSettings();
-        uiSettings.setCompassEnabled(true); // 나침반 활성화
-        uiSettings.setScaleBarEnabled(true); // 축척 바 활성화
-        uiSettings.setZoomControlEnabled(true); // 확대/축소 버튼 활성화
-        uiSettings.setLocationButtonEnabled(true); // 위치 버튼 활성화
+        uiSettings.setCompassEnabled(true);
+        uiSettings.setScaleBarEnabled(true);
+        uiSettings.setZoomControlEnabled(true);
+        uiSettings.setLocationButtonEnabled(true);
 
+        // 위치 소스 설정
         naverMap.setLocationSource(locationSource);
         naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
 
         // 위치 오버레이 설정
         LocationOverlay locationOverlay = naverMap.getLocationOverlay();
-        locationOverlay.setVisible(true);
+        locationOverlay.setVisible(true); // 위치 오버레이 표시
 
         naverMap.addOnCameraIdleListener(() -> {
             if (!isCameraUpdating) {
-                if (!isRouteDisplayed || isCurrentLocationClicked) {
+                if (!isRouteDisplayed) {
                     startPointCoords = naverMap.getCameraPosition().target.longitude + "," + naverMap.getCameraPosition().target.latitude;
                     Log.d(TAG, "startPointCoords: " + startPointCoords);
                 }
             }
         });
 
-        // 지도 클릭 이벤트 추가
         naverMap.setOnMapClickListener((point, coord) -> {
             Log.d(TAG, "지도 클릭: " + coord.latitude + ", " + coord.longitude);
             getPlaceInfo(coord.latitude, coord.longitude);
         });
+
+        // 위치 업데이트 호출
+        startLocationUpdates(); // 현재 위치 업데이트 시작
     }
+
+
+    private void startLocationUpdates() {
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                if (locationResult == null) {
+                    return;
+                }
+                for (Location location : locationResult.getLocations()) {
+                    LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                    startPointCoords = latLng.longitude + "," + latLng.latitude;
+                    updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
+
+                    // 위치 오버레이 업데이트
+                    LocationOverlay locationOverlay = naverMap.getLocationOverlay();
+                    locationOverlay.setPosition(latLng); // 현재 위치로 원 위치 설정
+                }
+            }
+        };
+
+        // LocationRequest 및 권한 요청 설정은 그대로 유지
+        LocationRequest locationRequest = LocationRequest.create();
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        locationRequest.setInterval(10000);
+        locationRequest.setFastestInterval(5000);
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        } else {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
+        }
+    }
+
+    // updateCurrentLocationMarker 메서드는 startLocationUpdates 외부에 있어야 합니다.
+    private void updateCurrentLocationMarker(LatLng latLng) {
+        if (currentLocationMarker != null) {
+            currentLocationMarker.setMap(null); // 기존 마커 제거
+        }
+        currentLocation = latLng;
+        currentLocationMarker.setPosition(latLng);
+        currentLocationMarker.setMap(naverMap); // 새로운 마커 추가
+    }
+
+
 
     private void getPlaceInfo(double latitude, double longitude) {
         String coords = longitude + "," + latitude;
@@ -352,8 +307,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG") // 실제 비밀 키 입력
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
@@ -371,7 +326,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 String responseData = response.body().string();
-                Log.d(TAG, "역지오코딩 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
+                Log.d(TAG, "역지오코딩 응답 데이터: " + responseData);
                 try {
                     JSONObject jsonResponse = new JSONObject(responseData);
                     JSONArray results = jsonResponse.getJSONArray("results");
@@ -402,7 +357,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this,
                         new String[]{Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_BLUETOOTH_PERMISSIONS);
-                return; // 권한이 없으면 메서드 종료
+                return;
             }
 
             bluetoothServerSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("MyApp", MY_UUID);
@@ -411,6 +366,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             Log.e(TAG, "Failed to start server socket", e);
         }
     }
+
     private class AcceptConnectionTask implements Runnable {
         @Override
         public void run() {
@@ -453,7 +409,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-
     private void connectToDevice(String address) {
         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
         try {
@@ -466,7 +421,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             bluetoothSocket.connect();
             Log.d(TAG, "Connected to " + address);
 
-            showConnectionSuccessDialog(); // 연결 성공 시 알림창 표시
+            showConnectionSuccessDialog();
             new Thread(new ReceiveMessageTask()).start();
 
         } catch (IOException e) {
@@ -523,9 +478,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-
     @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
             if (data != null) {
@@ -548,14 +502,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-
     private void geocodeLocation(String query) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
@@ -573,9 +526,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 String responseData = response.body().string();
-                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
-
-                // 새로운 액티비티로 응답 데이터를 전달
+                Log.d(TAG, "Geocoding 응답 데이터: " + responseData);
                 Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
                 intent.putExtra("responseData", responseData);
                 startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
@@ -583,14 +534,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-
     private void geocodeSelectedLocation(String address) {
         String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + address;
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 실제 클라이언트 ID 입력
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 실제 비밀 키 입력
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
@@ -608,13 +558,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
 
                 String responseData = response.body().string();
-                Log.d(TAG, "Geocoding 응답 데이터: " + responseData); // 응답 데이터를 로그에 출력
+                Log.d(TAG, "Geocoding 응답 데이터: " + responseData);
                 try {
                     JSONObject jsonResponse = new JSONObject(responseData);
                     JSONArray addresses = jsonResponse.getJSONArray("addresses");
                     if (addresses.length() > 0) {
-                        JSONObject address = addresses.getJSONObject(0);
-                        targetPointCoords = address.getString("x") + "," + address.getString("y");
+                        JSONObject addressObj = addresses.getJSONObject(0);
+                        targetPointCoords = addressObj.getString("x") + "," + addressObj.getString("y");
                         Log.d(TAG, "Geocoding 결과 - targetPointCoords: " + targetPointCoords);
                         showRoute();
                     } else {
@@ -653,7 +603,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         JSONArray pathData = route.getJSONObject(0).getJSONArray("path");
 
                         List<LatLng> coords = new ArrayList<>();
-                        totalDistanceInMeters = 0.0; // 거리 초기화
+                        totalDistanceInMeters = 0.0;
 
                         for (int i = 0; i < pathData.length(); i++) {
                             JSONArray coord = pathData.getJSONArray(i);
@@ -671,7 +621,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         path.setMap(naverMap);
                         Log.d(TAG, "경로 설정 완료: " + coords.toString());
 
-                        if (!coords.isEmpty() && !isCurrentLocationClicked) {
+                        if (!coords.isEmpty() && !isRouteDisplayed) {
                             LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
                             isCameraUpdating = true;
                             isRouteDisplayed = true;
@@ -686,9 +636,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    // 두 지점 간 거리 계산 (미터 단위)
     private double calculateDistance(LatLng start, LatLng end) {
-        double earthRadius = 6371000; // 지구 반지름 (미터)
+        double earthRadius = 6371000;
         double dLat = Math.toRadians(end.latitude - start.latitude);
         double dLng = Math.toRadians(end.longitude - start.longitude);
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -698,7 +647,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return earthRadius * c;
     }
 
-    // 예상 소요 시간 업데이트
     private void updateEstimatedTime(double speedKmh) {
         if (speedKmh > 0) {
             double timeInHours = (totalDistanceInMeters / 1000) / speedKmh;
@@ -714,8 +662,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je") // 정확한 클라이언트 ID
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")   // 정확한 Secret 키
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
                 .build();
 
         Log.d(TAG, "directionCallRequest - URL: " + url);

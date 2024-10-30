@@ -41,8 +41,6 @@
             android:textColor="@android:color/white"
             android:background="@android:color/transparent"
             android:padding="8dp" />
-        <!-- 텍스트 볼드 처리 및 폰트 크기 조정 -->
-
     </LinearLayout>
 
     <!-- 옵션 표시/숨김 버튼 -->
@@ -69,19 +67,6 @@
         android:text="0 km/h"
         android:textSize="36sp"
         android:textColor="#000" />
-
-    <!-- 현재 위치 버튼 -->
-    <Button
-        android:id="@+id/current_location_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="현재 위치"
-        android:textColor="@android:color/white"
-        android:backgroundTint="#4CAF50"
-        android:layout_marginStart="8dp"
-        android:layout_marginBottom="8dp"
-        android:layout_alignStart="@+id/map"
-        android:layout_alignBottom="@+id/map" />
 
     <!-- Connect, Disconnect 버튼을 포함하는 LinearLayout -->
     <LinearLayout
@@ -160,6 +145,5 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@id/search_bar"
-        android:layout_above="@id/current_location_button" />
-
+        android:layout_above="@id/additionalInfoLayout" /> <!-- 변경된 ID -->
 </RelativeLayout>
