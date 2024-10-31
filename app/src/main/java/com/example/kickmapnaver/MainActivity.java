@@ -8,6 +8,10 @@ import android.bluetooth.BluetoothSocket;
 import android.bluetooth.BluetoothServerSocket;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
@@ -19,6 +23,12 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.graphics.Path;
+import android.graphics.Paint;
+import android.graphics.Canvas;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -40,6 +50,7 @@ import com.naver.maps.map.OnMapReadyCallback;
 import com.naver.maps.map.UiSettings;
 import com.naver.maps.map.overlay.LocationOverlay;
 import com.naver.maps.map.overlay.Marker;
+import com.naver.maps.map.overlay.OverlayImage;
 import com.naver.maps.map.overlay.PathOverlay;
 import com.naver.maps.map.util.FusedLocationSource;
 
@@ -234,7 +245,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // 위치 오버레이 설정
         LocationOverlay locationOverlay = naverMap.getLocationOverlay();
         locationOverlay.setVisible(true); // 위치 오버레이 표시
+        locationOverlay.setZIndex(1); // Z-Index 설정하여 다른 레이어 위에 표시
 
+        // 카메라 위치 업데이트
+        naverMap.moveCamera(CameraUpdate.scrollTo(new LatLng(34.81233, 126.43940))); // 초기 카메라 위치 설정
+
+        // 위험 마크 표시
+        drawWarningMarker(new LatLng(34.910375, 126.435491), "위험지역");
+        drawWarningMarker(new LatLng(34.910573, 126.436580), "위험지역");
+        drawWarningMarker(new LatLng(34.910618, 126.434664), "위험지역");
+        drawWarningMarker(new LatLng(34.908200, 126.433954), "위험지역");
+
+        // 카메라 이동 상태 체크
         naverMap.addOnCameraIdleListener(() -> {
             if (!isCameraUpdating) {
                 if (!isRouteDisplayed) {
@@ -244,14 +266,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
 
+        // 지도 클릭 리스너 설정
         naverMap.setOnMapClickListener((point, coord) -> {
             Log.d(TAG, "지도 클릭: " + coord.latitude + ", " + coord.longitude);
             getPlaceInfo(coord.latitude, coord.longitude);
         });
-
-        // 위치 업데이트 호출
-        startLocationUpdates(); // 현재 위치 업데이트 시작
     }
+
+    private void drawWarningMarker(LatLng location, String description) {
+        Marker warningMarker = new Marker();
+        warningMarker.setPosition(location);
+
+        // ic_warning 이미지를 비트맵으로 불러오고 크기를 조정
+        Bitmap originalBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_warning);
+
+        // 크기 조정
+        Bitmap resizedBitmap = Bitmap.createScaledBitmap(originalBitmap, 80, 80, false); // 80x80으로 조정
+
+        // 크기 조정된 비트맵을 아이콘으로 설정
+        warningMarker.setIcon(OverlayImage.fromBitmap(resizedBitmap));
+
+        warningMarker.setMap(naverMap); // 마커를 지도에 추가
+        warningMarker.setCaptionText(description); // 설명 추가
+    }
+
+
 
 
     private void startLocationUpdates() {
@@ -273,7 +312,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         };
 
-        // LocationRequest 및 권한 요청 설정은 그대로 유지
+        // LocationRequest 및 권한 요청 설정
         LocationRequest locationRequest = LocationRequest.create();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setInterval(10000);
@@ -289,7 +328,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    // updateCurrentLocationMarker 메서드는 startLocationUpdates 외부에 있어야 합니다.
+    private Bitmap createTriangleMarker() {
+        int width = 100;  // 삼각형 너비
+        int height = 100; // 삼각형 높이
+
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint();
+        paint.setColor(Color.RED); // 삼각형 색상
+        paint.setStyle(Paint.Style.FILL);
+
+        // 삼각형 그리기
+        Path path = new Path();
+        path.moveTo(width / 2, 0); // 삼각형의 꼭대기
+        path.lineTo(0, height);     // 왼쪽 꼭지점
+        path.lineTo(width, height); // 오른쪽 꼭지점
+        path.close();
+
+        canvas.drawPath(path, paint);
+        return bitmap;
+    }
+
+
     private void updateCurrentLocationMarker(LatLng latLng) {
         if (currentLocationMarker != null) {
             currentLocationMarker.setMap(null); // 기존 마커 제거
