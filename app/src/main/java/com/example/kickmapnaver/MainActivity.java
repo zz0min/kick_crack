@@ -46,6 +46,8 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 import com.naver.maps.geometry.LatLng;
 import com.naver.maps.geometry.LatLngBounds;
 import com.naver.maps.map.CameraUpdate;
@@ -104,10 +106,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean isRouteDisplayed = false;
     private boolean isInfoVisible = false;
 
-
     private MediaPlayer mediaPlayer;
     private TextView alertTextView;
     private Handler alertHandler;
+
+    private FirebaseDatabase database;
+    private DatabaseReference myRef;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -138,6 +142,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         initBluetoothUI();
         initMapUI();
+        startLocationUpdates();
     }
 
     private void initBluetoothUI() {
@@ -520,13 +525,46 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                     crackDetectionTextView.setText("균열 탐지: " + content);
                                     showAlert();
                                 });
+                                if (currentLocation != null) {
+                                    double latitude = currentLocation.latitude;
+                                    double longitude = currentLocation.longitude;
+
+                                    // Firebase 데이터베이스에 위치 정보 저장 (push로 고유 키 생성)
+                                    FirebaseDatabase database = FirebaseDatabase.getInstance();
+                                    DatabaseReference locationRef = database.getReference("locations");
+
+                                    LocationData locationData = new LocationData(latitude, longitude);
+                                    locationRef.push().setValue(locationData) // push를 사용해 여러 위치 저장
+                                            .addOnSuccessListener(aVoid -> Log.d(TAG, "위치 정보 저장 성공"))
+                                            .addOnFailureListener(e -> Log.e(TAG, "위치 정보 저장 실패", e));
+                                } else {
+                                    Log.e(TAG, "현재 위치가 null입니다. 위치 정보를 저장할 수 없습니다.");
+                                }
                                 break;
                             case '2':
                                 runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
                                 break;
                             case '3':
                                 runOnUiThread(() -> impactTextView.setText("충격량: " + content));
+
+                                // 현재 위치가 유효한지 확인 후 Firebase에 위치 정보 저장
+                                if (currentLocation != null) {
+                                    double latitude = currentLocation.latitude;
+                                    double longitude = currentLocation.longitude;
+
+                                    // Firebase 데이터베이스에 위치 정보 저장 (push로 고유 키 생성)
+                                    FirebaseDatabase database = FirebaseDatabase.getInstance();
+                                    DatabaseReference locationRef = database.getReference("locations");
+
+                                    LocationData locationData = new LocationData(latitude, longitude);
+                                    locationRef.push().setValue(locationData) // push를 사용해 여러 위치 저장
+                                            .addOnSuccessListener(aVoid -> Log.d(TAG, "위치 정보 저장 성공"))
+                                            .addOnFailureListener(e -> Log.e(TAG, "위치 정보 저장 실패", e));
+                                } else {
+                                    Log.e(TAG, "현재 위치가 null입니다. 위치 정보를 저장할 수 없습니다.");
+                                }
                                 break;
+
                             case '4':
                                 runOnUiThread(() -> speedTextView.setText("속도: " + content));
                                 break;
@@ -540,6 +578,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         }
     }
+
+    public class LocationData {
+        public double latitude;
+        public double longitude;
+
+        public LocationData() {
+            // Default constructor required for calls to DataSnapshot.getValue(LocationData.class)
+        }
+
+        public LocationData(double latitude, double longitude) {
+            this.latitude = latitude;
+            this.longitude = longitude;
+        }
+    }
+
 
     // 알림과 테두리 깜박임 효과
     private void showAlert() {
