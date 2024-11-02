@@ -13,14 +13,20 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.location.Location;
+import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Path;
@@ -98,6 +104,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean isRouteDisplayed = false;
     private boolean isInfoVisible = false;
 
+
+    private MediaPlayer mediaPlayer;
+    private TextView alertTextView;
+    private Handler alertHandler;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -105,6 +116,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         additionalInfoLayout = findViewById(R.id.additionalInfoLayout);
         ImageButton toggleButton = findViewById(R.id.toggleButton);
+
+        alertTextView = findViewById(R.id.alertTextView);
+
+        // 소리 파일 초기화
+        mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+        alertHandler = new Handler();
+        // 사운드 및 테두리 깜박임 효과
+        mediaPlayer.setOnCompletionListener(mp -> mediaPlayer.seekTo(0)); // 반복 재생 가능하게 설정
 
         toggleButton.setOnClickListener(v -> {
             if (isInfoVisible) {
@@ -421,54 +440,35 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
 
             bluetoothServerSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("MyApp", MY_UUID);
-            new Thread(new AcceptConnectionTask()).start();
+            new Thread(new AcceptConnectionTask()).start(); // AcceptConnectionTask를 서버 소켓에서 실행
         } catch (IOException e) {
             Log.e(TAG, "Failed to start server socket", e);
         }
     }
 
+    // AcceptConnectionTask에서 bluetoothSocket을 새로 할당하는 방식으로 변경
     private class AcceptConnectionTask implements Runnable {
         @Override
         public void run() {
+            BluetoothSocket socket;
             try {
-                InputStream inputStream = bluetoothSocket.getInputStream();
-                byte[] buffer = new byte[1024];
-                int bytes;
-
-                while (bluetoothSocket.isConnected()) {
-                    bytes = inputStream.read(buffer);
-                    if (bytes > 0) {
-                        String message = new String(buffer, 0, bytes);
-                        String content = message.substring(1);
-
-                        switch (message.charAt(0)) {
-                            case '1':
-                                runOnUiThread(() -> crackDetectionTextView.setText("균열 탐지: " + content));
-                                break;
-                            case '2':
-                                runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
-                                break;
-                            case '3':
-                                runOnUiThread(() -> impactTextView.setText("충격량: " + content));
-                                break;
-                            case '4':
-                                runOnUiThread(() -> {
-                                    speedTextView.setText("속도: " + content + " km/h");
-                                    double speed = Double.parseDouble(content);
-                                    updateEstimatedTime(speed);
-                                });
-                                break;
-                            default:
-                                Log.w(TAG, "Unknown message type received: " + message);
-                        }
-                    }
+                Log.d(TAG, "Waiting for client to connect...");
+                socket = bluetoothServerSocket.accept(); // 연결 수락 시 새 소켓을 생성
+                if (socket != null) {
+                    bluetoothSocket = socket; // 새로 생성된 소켓을 bluetoothSocket에 할당
+                    Log.d(TAG, "Client connected");
+                    showConnectionSuccessDialog(); // 연결 성공 시 알림 표시
+                    new Thread(new ReceiveMessageTask()).start(); // 새로운 ReceiveMessageTask 스레드 시작
+                    bluetoothServerSocket.close(); // 서버 소켓 닫기
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Error reading message", e);
+                Log.e(TAG, "Error accepting connection", e);
             }
         }
     }
 
+
+    // connectToDevice 메서드 수정 - 연결 후 새 소켓 할당 방식 동일
     private void connectToDevice(String address) {
         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
         try {
@@ -477,17 +477,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return;
             }
 
-            bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID);
+            bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID); // BluetoothSocket 새로 생성
             bluetoothSocket.connect();
             Log.d(TAG, "Connected to " + address);
 
-            showConnectionSuccessDialog();
-            new Thread(new ReceiveMessageTask()).start();
+            showConnectionSuccessDialog(); // 연결 성공 시 다이얼로그 표시
+            new Thread(new ReceiveMessageTask()).start(); // 수신 스레드 시작
 
         } catch (IOException e) {
             Log.e(TAG, "Connection failed", e);
         }
-
     }
 
     private void showConnectionSuccessDialog() {
@@ -516,7 +515,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                         switch (message.charAt(0)) {
                             case '1':
-                                runOnUiThread(() -> crackDetectionTextView.setText("균열 탐지: " + content));
+                                // 알림 메시지 수신 시 showAlert() 호출
+                                runOnUiThread(() -> {
+                                    crackDetectionTextView.setText("균열 탐지: " + content);
+                                    showAlert();
+                                });
                                 break;
                             case '2':
                                 runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
@@ -537,6 +540,41 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         }
     }
+
+    // 알림과 테두리 깜박임 효과
+    private void showAlert() {
+        // 소리 1초 간격으로 3번 재생
+        playAlertSound();
+
+        // 테두리 깜박임 애니메이션
+        Animation borderBlinkAnimation = new AlphaAnimation(1, 0);
+        borderBlinkAnimation.setDuration(500);
+        borderBlinkAnimation.setRepeatMode(Animation.REVERSE);
+        borderBlinkAnimation.setRepeatCount(5); // 1초 간격으로 3번 반복
+
+        // 알림 텍스트 깜박임 및 표시
+        alertTextView.setVisibility(View.VISIBLE);
+        alertTextView.startAnimation(borderBlinkAnimation);
+
+        // 3초 후에 텍스트와 테두리 숨기기
+        alertHandler.postDelayed(() -> {
+            alertTextView.setVisibility(View.GONE);
+        }, 3000);
+    }
+
+    // 소리 재생 메서드
+    private void playAlertSound() {
+        if (mediaPlayer != null) {
+            mediaPlayer.start();
+            alertHandler.postDelayed(() -> mediaPlayer.start(), 1000);
+            alertHandler.postDelayed(() -> mediaPlayer.start(), 2000);
+        }
+    }
+
+
+
+
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
