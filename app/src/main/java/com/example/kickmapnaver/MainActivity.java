@@ -45,9 +45,13 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.naver.maps.geometry.LatLng;
 import com.naver.maps.geometry.LatLngBounds;
 import com.naver.maps.map.CameraUpdate;
@@ -110,8 +114,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private TextView alertTextView;
     private Handler alertHandler;
 
-    private FirebaseDatabase database;
-    private DatabaseReference myRef;
+    private double currentLatitude;
+    private double currentLongitude;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -271,14 +275,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         locationOverlay.setVisible(true); // 위치 오버레이 표시
         locationOverlay.setZIndex(1); // Z-Index 설정하여 다른 레이어 위에 표시
 
+        // Firebase에서 데이터 불러와 마커 그리기
+        loadWarningMarkersFromFirebase();
+
         // 카메라 위치 업데이트
         naverMap.moveCamera(CameraUpdate.scrollTo(new LatLng(34.81233, 126.43940))); // 초기 카메라 위치 설정
 
-        // 위험 마크 표시
-        drawWarningMarker(new LatLng(34.910375, 126.435491), "위험지역");
-        drawWarningMarker(new LatLng(34.910573, 126.436580), "위험지역");
-        drawWarningMarker(new LatLng(34.910618, 126.434664), "위험지역");
-        drawWarningMarker(new LatLng(34.908200, 126.433954), "위험지역");
 
         // 카메라 이동 상태 체크
         naverMap.addOnCameraIdleListener(() -> {
@@ -314,7 +316,29 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         warningMarker.setCaptionText(description); // 설명 추가
     }
 
+    private void loadWarningMarkersFromFirebase() {
+        FirebaseDatabase database = FirebaseDatabase.getInstance();
+        DatabaseReference locationRef = database.getReference("locations");
 
+        locationRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                    LocationData locationData = snapshot.getValue(LocationData.class);
+                    if (locationData != null) {
+                        LatLng location = new LatLng(locationData.latitude, locationData.longitude);
+                        drawWarningMarker(location, "위험지역"); // 각 위치에 마커 그리기
+                    }
+                }
+                Log.d(TAG, "Firebase 데이터로 마커 추가 완료");
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+                Log.e(TAG, "Firebase 데이터 불러오기 실패: " + databaseError.getMessage());
+            }
+        });
+    }
 
 
     private void startLocationUpdates() {
@@ -327,6 +351,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 for (Location location : locationResult.getLocations()) {
                     LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
                     startPointCoords = latLng.longitude + "," + latLng.latitude;
+
+                    Log.d(TAG, "주기적인 위치 업데이트 - 위도: " + latLng.longitude + ", 경도: " + latLng.latitude);
                     updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
 
                     // 위치 오버레이 업데이트
@@ -336,11 +362,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         };
 
-        // LocationRequest 및 권한 요청 설정
-        LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(10000);
-        locationRequest.setFastestInterval(5000);
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000) // 1초 주기
+                .setMinUpdateIntervalMillis(1000) // 가장 빠른 업데이트 간격 1초
+                .build();
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -579,12 +603,42 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    public class LocationData {
+
+    private void getCurrentLocation() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+            return;
+        }
+
+        FusedLocationProviderClient fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        fusedLocationClient.getLastLocation()
+                .addOnSuccessListener(location -> {
+                    if (location != null) {
+                        // 위치 정보를 변수에 저장
+                        currentLatitude = location.getLatitude();
+                        currentLongitude = location.getLongitude();
+
+                        // 현재 위치 정보를 사용하여 UI 업데이트 또는 다른 동작 수행
+                        Log.d("CurrentLocation", "현재 위치 - 위도: " + currentLatitude + ", 경도: " + currentLongitude);
+                        Toast.makeText(MainActivity.this, "현재 위치: 위도 " + currentLatitude + ", 경도 " + currentLongitude, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Log.e("CurrentLocation", "위치를 가져올 수 없습니다.");
+                        Toast.makeText(MainActivity.this, "위치를 가져올 수 없습니다.", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e("CurrentLocation", "위치 가져오기 실패: " + e.getMessage());
+                    Toast.makeText(MainActivity.this, "위치 가져오기 실패: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+    }
+
+    public static class LocationData {
         public double latitude;
         public double longitude;
 
+        // 기본 생성자 (필수)
         public LocationData() {
-            // Default constructor required for calls to DataSnapshot.getValue(LocationData.class)
+            // Firebase가 객체를 역직렬화할 때 필요
         }
 
         public LocationData(double latitude, double longitude) {
@@ -592,7 +646,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             this.longitude = longitude;
         }
     }
-
 
     // 알림과 테두리 깜박임 효과
     private void showAlert() {
