@@ -1,5 +1,9 @@
 package com.example.kickmapnaver;
 
+import com.example.kickmapnaver.SearchResultItem;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
 import android.Manifest;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
@@ -18,6 +22,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
@@ -47,6 +52,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 import com.naver.maps.geometry.LatLng;
 import com.naver.maps.geometry.LatLngBounds;
+import com.naver.maps.map.CameraPosition;
 import com.naver.maps.map.CameraUpdate;
 import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.MapFragment;
@@ -68,12 +74,8 @@ import java.io.InputStream;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -83,6 +85,9 @@ import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+
+import com.google.android.gms.tasks.OnSuccessListener;
+
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final String TAG = "BluetoothReceiver";
@@ -132,12 +137,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         additionalInfoLayout = findViewById(R.id.additionalInfoLayout);
         ImageButton toggleButton = findViewById(R.id.toggleButton);
-
         alertTextView = findViewById(R.id.alertTextView);
 
         // 소리 파일 초기화
         mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
         alertHandler = new Handler();
+
         // 사운드 및 테두리 깜박임 효과
         mediaPlayer.setOnCompletionListener(mp -> mediaPlayer.seekTo(0)); // 반복 재생 가능하게 설정
 
@@ -152,11 +157,83 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             isInfoVisible = !isInfoVisible;
         });
 
+        // 경로 방향 버튼 초기화
+        Button routeDirectionButton = findViewById(R.id.routeDirectionButton);
+        routeDirectionButton.setOnClickListener(v -> moveToRouteDirection());
+
         initBluetoothUI();
         initMapUI();
         startLocationUpdates();
+
         // 주기적으로 마커를 불러오는 작업 시작
         startLoadingMarkersPeriodically();
+    }
+
+    // 경로 방향으로 카메라를 이동하는 메서드
+    private void moveToRouteDirection() {
+        if (naverMap != null && path.getCoords() != null && !path.getCoords().isEmpty() && currentLocation != null) {
+            // 경로의 첫 번째 지점을 가져옵니다.
+            LatLng firstPoint = path.getCoords().get(0);
+
+            // 현재 위치와 첫 번째 지점 사이의 방위 각도를 계산합니다.
+            double angle = calculateBearing(currentLocation, firstPoint);
+
+            // 카메라 위치, 기울기, 회전 설정
+            CameraPosition cameraPosition = new CameraPosition(
+                    currentLocation, // 현재 위치를 중심으로 설정
+                    16,              // 줌 레벨
+                    30,              // 기울기 (tilt)
+                    (float) angle    // 회전 각도 (bearing)
+            );
+
+            // NaverMap에 카메라 업데이트
+            naverMap.setCameraPosition(cameraPosition);
+
+            Toast.makeText(this, "경로 방향으로 카메라 이동", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "경로 정보가 없습니다.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+
+    // 두 지점 사이의 방위 각도를 계산하는 메서드
+    private double calculateBearing(LatLng start, LatLng end) {
+        double startLat = Math.toRadians(start.latitude);
+        double startLng = Math.toRadians(start.longitude);
+        double endLat = Math.toRadians(end.latitude);
+        double endLng = Math.toRadians(end.longitude);
+
+        double dLng = endLng - startLng;
+        double y = Math.sin(dLng) * Math.cos(endLat);
+        double x = Math.cos(startLat) * Math.sin(endLat) -
+                Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
+        return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    private void displaySearchResults(String responseData) {
+        List<SearchResultItem> searchResults = new ArrayList<>(); // MainActivity.SearchResultItem 대신 SearchResultItem 사용
+
+        try {
+            JSONObject jsonResponse = new JSONObject(responseData);
+            JSONArray items = jsonResponse.getJSONArray("items");
+
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.getJSONObject(i);
+                String title = item.getString("title").replaceAll("<.*?>", ""); // HTML 태그 제거
+                String address = item.getString("address");
+                String roadAddress = item.getString("roadAddress");
+
+                searchResults.add(new SearchResultItem(title, address, roadAddress));
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+            Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
+        }
+
+        RecyclerView recyclerView = findViewById(R.id.recycler_view); // ID 확인
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        SearchResultAdapter adapter = new SearchResultAdapter(searchResults);
+        recyclerView.setAdapter(adapter);
     }
 
     private void initBluetoothUI() {
@@ -189,6 +266,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 searchText.setError("검색어를 입력해주세요.");
             }
         });
+
+        // Enter 키 이벤트를 추가하여 검색 실행
+        EditText searchText = findViewById(R.id.search_text);
+        searchText.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
+                performSearch(); // Enter 키를 눌렀을 때 검색 실행
+                return true;
+            }
+            return false;
+        });
+    }
+
+    // 검색 로직을 공통으로 사용하는 메서드로 분리
+    private void performSearch() {
+        EditText searchText = findViewById(R.id.search_text);
+        String query = searchText.getText().toString().trim();
+        if (!query.isEmpty()) {
+            searchPlace(query);
+        } else {
+            Log.e(TAG, "검색어가 비어 있습니다.");
+            searchText.setError("검색어를 입력해주세요.");
+        }
     }
 
     private void initMapUI() {
@@ -234,26 +333,44 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return true;
     }
 
+    private void requestLocationPermissions() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    LOCATION_PERMISSION_REQUEST_CODE);
+        }
+    }
+
     private void searchPlace(String query) {
-        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
         OkHttpClient client = new OkHttpClient();
+        String encodedQuery = null;
+
+        try {
+            encodedQuery = java.net.URLEncoder.encode(query, "UTF-8");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        String url = "https://openapi.naver.com/v1/search/local.json?query=" + encodedQuery + "&display=5&start=1&sort=random";
+
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
+                .addHeader("X-Naver-Client-Id", "gEkMN9J1RL5OL_WuTwP7")
+                .addHeader("X-Naver-Client-Secret", "735JQY6Q6F")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 e.printStackTrace();
-                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
+                System.out.println("로컬 검색 요청 실패: " + e.getMessage());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
+                    System.out.println("로컬 검색 응답 실패: " + response.code() + " " + response.message());
                     return;
                 }
 
@@ -268,6 +385,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(@NonNull NaverMap map) {
         naverMap = map;
+        requestLocationPermissions(); // 위치 권한 요청 추가
+        startLocationUpdates(); // 위치 업데이트 시작
 
         // UI 설정
         UiSettings uiSettings = naverMap.getUiSettings();
@@ -343,8 +462,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void stopLoadingMarkersPeriodically() {
         handler.removeCallbacks(loadMarkersRunnable);
     }
-
-
 
     private void loadWarningMarkersFromFirebase() {
         FirebaseDatabase database = FirebaseDatabase.getInstance();
@@ -451,13 +568,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 for (Location location : locationResult.getLocations()) {
                     LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
                     startPointCoords = latLng.longitude + "," + latLng.latitude;
-
+                    currentLocation = latLng; // 현재 위치를 currentLocation에 업데이트
                     Log.d(TAG, "주기적인 위치 업데이트 - 위도: " + latLng.longitude + ", 경도: " + latLng.latitude);
                     updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
 
                     // 위치 오버레이 업데이트
-                    LocationOverlay locationOverlay = naverMap.getLocationOverlay();
-                    locationOverlay.setPosition(latLng); // 현재 위치로 원 위치 설정
+                    if (naverMap != null) {
+                        LocationOverlay locationOverlay = naverMap.getLocationOverlay();
+                        locationOverlay.setPosition(latLng); // 현재 위치로 원 위치 설정
+                    }
                 }
             }
         };
@@ -473,6 +592,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     LOCATION_PERMISSION_REQUEST_CODE);
         } else {
             fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startLocationUpdates(); // 위치 업데이트 시작
+            } else {
+                Toast.makeText(this, "위치 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
@@ -856,18 +987,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-
-
-
-
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
             if (data != null) {
-                String selectedPlace = data.getStringExtra("selectedPlace");
-                geocodeSelectedLocation(selectedPlace);
+                String roadAddress = data.getStringExtra("roadAddress");
+                if (roadAddress != null && !roadAddress.isEmpty()) {
+                    geocodeSelectedLocation(roadAddress);
+                } else {
+                    Log.e(TAG, "선택된 주소가 비어 있습니다.");
+                    Toast.makeText(this, "선택된 주소를 찾을 수 없습니다. 다시 시도해주세요.", Toast.LENGTH_SHORT).show();
+                }
             }
         }
     }
@@ -885,51 +1016,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void geocodeLocation(String query) {
-        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder()
-                .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
-                .build();
-
-        client.newCall(request).enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                e.printStackTrace();
-                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                if (!response.isSuccessful()) {
-                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
-                    return;
-                }
-
-                String responseData = response.body().string();
-                Log.d(TAG, "Geocoding 응답 데이터: " + responseData);
-                Intent intent = new Intent(MainActivity.this, SearchResultsActivity.class);
-                intent.putExtra("responseData", responseData);
-                startActivityForResult(intent, SEARCH_RESULT_REQUEST_CODE);
-            }
-        });
-    }
-
     private void geocodeSelectedLocation(String address) {
-        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + address;
+        String encodedAddress = null;
+        try {
+            // 주소를 URL에 사용 가능한 형태로 인코딩합니다.
+            encodedAddress = java.net.URLEncoder.encode(address, "UTF-8");
+        } catch (Exception e) {
+            Log.e(TAG, "주소 인코딩 실패: " + e.getMessage());
+            return;
+        }
+
+        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + encodedAddress;
         OkHttpClient client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
-                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "se61eob1kk")
+                .addHeader("X-NCP-APIGW-API-KEY", "5VxOL9ERMzqmbgmjCXDUP4iuONVDgbV7WlnAVyUn")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                e.printStackTrace();
                 Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
             }
 
@@ -944,17 +1051,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Log.d(TAG, "Geocoding 응답 데이터: " + responseData);
                 try {
                     JSONObject jsonResponse = new JSONObject(responseData);
-                    JSONArray addresses = jsonResponse.getJSONArray("addresses");
-                    if (addresses.length() > 0) {
+                    JSONArray addresses = jsonResponse.optJSONArray("addresses");
+
+                    if (addresses != null && addresses.length() > 0) {
                         JSONObject addressObj = addresses.getJSONObject(0);
-                        targetPointCoords = addressObj.getString("x") + "," + addressObj.getString("y");
-                        Log.d(TAG, "Geocoding 결과 - targetPointCoords: " + targetPointCoords);
-                        showRoute();
+                        String x = addressObj.optString("x", null);
+                        String y = addressObj.optString("y", null);
+
+                        if (x != null && y != null) {
+                            targetPointCoords = x + "," + y;
+                            showRoute(); // 변환된 좌표를 사용하여 경로 표시
+                        } else {
+                            Log.e(TAG, "Geocoding 결과에 좌표가 없습니다.");
+                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "유효한 좌표가 없습니다. 다른 위치를 선택해주세요.", Toast.LENGTH_SHORT).show());
+                        }
                     } else {
                         Log.e(TAG, "Geocoding 결과가 없습니다.");
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "지오코딩 결과가 없습니다. 다른 위치를 선택해주세요.", Toast.LENGTH_SHORT).show());
                     }
                 } catch (JSONException e) {
-                    e.printStackTrace();
                     Log.e(TAG, "JSON 파싱 실패: " + e.getMessage());
                 }
             }
