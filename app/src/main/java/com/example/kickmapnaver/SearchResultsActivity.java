@@ -19,7 +19,7 @@ public class SearchResultsActivity extends AppCompatActivity {
     private static final String TAG = "SearchResultsActivity";
     private RecyclerView recyclerView;
     private PlaceAdapter placeAdapter;
-    private List<Place> placeList = new ArrayList<>();
+    private List<SearchResultItem> placeList = new ArrayList<>();
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -29,16 +29,12 @@ public class SearchResultsActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recycler_view);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        placeAdapter = new PlaceAdapter(placeList, new PlaceAdapter.OnItemClickListener() {
-            @Override
-            public void onItemClick(Place place) {
-                Toast.makeText(SearchResultsActivity.this, "도착지: " + place.getName(), Toast.LENGTH_SHORT).show();
-                // 선택된 장소에 대한 추가 작업 수행
-                Intent resultIntent = new Intent();
-                resultIntent.putExtra("selectedPlace", place.getAddress()); // 주소를 반환
-                setResult(RESULT_OK, resultIntent);
-                finish();
-            }
+        placeAdapter = new PlaceAdapter(placeList, item -> {
+            // 선택된 장소에 대한 주소를 MainActivity로 전달
+            Intent resultIntent = new Intent();
+            resultIntent.putExtra("roadAddress", item.getRoadAddress());
+            setResult(RESULT_OK, resultIntent);
+            finish();
         });
         recyclerView.setAdapter(placeAdapter);
 
@@ -52,13 +48,19 @@ public class SearchResultsActivity extends AppCompatActivity {
     private void parseAndDisplayResults(String responseData) {
         try {
             JSONObject jsonResponse = new JSONObject(responseData);
-            JSONArray addresses = jsonResponse.getJSONArray("addresses");
-            placeList.clear(); // 이전 결과를 지우고 새로운 결과를 추가
-            for (int i = 0; i < addresses.length(); i++) {
-                JSONObject address = addresses.getJSONObject(i);
-                String name = address.getString("roadAddress");
-                String addr = address.getString("jibunAddress");
-                placeList.add(new Place(name, addr));
+            JSONArray items = jsonResponse.optJSONArray("items"); // items 배열에서 데이터를 가져옴
+
+            if (items == null) {
+                Log.e(TAG, "결과 JSON에 'items' 배열이 없습니다.");
+                return;
+            }
+
+            placeList.clear();
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.getJSONObject(i);
+                String title = item.optString("title", "이름 없음").replaceAll("<.*?>", ""); // HTML 태그 제거
+                String roadAddress = item.optString("roadAddress", "주소 없음");
+                placeList.add(new SearchResultItem(title, "", roadAddress)); // address는 빈 문자열로 설정
             }
             placeAdapter.notifyDataSetChanged();
         } catch (JSONException e) {
