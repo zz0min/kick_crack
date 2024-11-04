@@ -1,8 +1,5 @@
 package com.example.kickmapnaver;
 
-import com.example.kickmapnaver.SearchResultItem;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
@@ -19,7 +16,6 @@ import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -125,33 +121,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         initMapUI();
     }
 
-    private void displaySearchResults(String responseData) {
-        List<SearchResultItem> searchResults = new ArrayList<>(); // MainActivity.SearchResultItem 대신 SearchResultItem 사용
-
-        try {
-            JSONObject jsonResponse = new JSONObject(responseData);
-            JSONArray items = jsonResponse.getJSONArray("items");
-
-            for (int i = 0; i < items.length(); i++) {
-                JSONObject item = items.getJSONObject(i);
-                String title = item.getString("title").replaceAll("<.*?>", ""); // HTML 태그 제거
-                String address = item.getString("address");
-                String roadAddress = item.getString("roadAddress");
-
-                searchResults.add(new SearchResultItem(title, address, roadAddress));
-            }
-        } catch (JSONException e) {
-            e.printStackTrace();
-            Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
-        }
-
-        RecyclerView recyclerView = findViewById(R.id.recycler_view); // ID 확인
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        SearchResultAdapter adapter = new SearchResultAdapter(searchResults);
-        recyclerView.setAdapter(adapter);
-    }
-
-
     private void initBluetoothUI() {
         crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
         tiltTextView = findViewById(R.id.tiltTextView);
@@ -182,27 +151,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 searchText.setError("검색어를 입력해주세요.");
             }
         });
-        // Enter 키 이벤트를 추가하여 검색 실행
-        EditText searchText = findViewById(R.id.search_text);
-        searchText.setOnKeyListener((v, keyCode, event) -> {
-            if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
-                performSearch(); // Enter 키를 눌렀을 때 검색 실행
-                return true;
-            }
-            return false;
-        });
-    }
-
-    // 검색 로직을 공통으로 사용하는 메서드로 분리
-    private void performSearch() {
-        EditText searchText = findViewById(R.id.search_text);
-        String query = searchText.getText().toString().trim();
-        if (!query.isEmpty()) {
-            searchPlace(query);
-        } else {
-            Log.e(TAG, "검색어가 비어 있습니다.");
-            searchText.setError("검색어를 입력해주세요.");
-        }
     }
 
     private void initMapUI() {
@@ -248,45 +196,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return true;
     }
 
-    private void requestLocationPermissions() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    LOCATION_PERMISSION_REQUEST_CODE);
-        }
-    }
-
-
     private void searchPlace(String query) {
+        String url = "https://naveropenapi.apigw.ntruss.com/map-geocode/v2/geocode?query=" + query;
         OkHttpClient client = new OkHttpClient();
-        String encodedQuery = null;
-
-        try {
-            encodedQuery = java.net.URLEncoder.encode(query, "UTF-8");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        String url = "https://openapi.naver.com/v1/search/local.json?query=" + encodedQuery + "&display=5&start=1&sort=random";
-
         Request request = new Request.Builder()
                 .url(url)
-                .addHeader("X-Naver-Client-Id", "gEkMN9J1RL5OL_WuTwP7")
-                .addHeader("X-Naver-Client-Secret", "735JQY6Q6F")
+                .addHeader("X-NCP-APIGW-API-KEY-ID", "5lfe49e4je")
+                .addHeader("X-NCP-APIGW-API-KEY", "Vh1jk6n59v5KSJdBcYDxmfYt57ktwtUlPPFBKjEG")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 e.printStackTrace();
-                System.out.println("로컬 검색 요청 실패: " + e.getMessage());
+                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    System.out.println("로컬 검색 응답 실패: " + response.code() + " " + response.message());
+                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
                     return;
                 }
 
@@ -298,12 +227,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-
     @Override
     public void onMapReady(@NonNull NaverMap map) {
         naverMap = map;
-        requestLocationPermissions(); // 위치 권한 요청 추가
-        startLocationUpdates(); // 위치 업데이트 시작
 
         // UI 설정
         UiSettings uiSettings = naverMap.getUiSettings();
@@ -368,64 +294,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
     private void startLocationUpdates() {
-        // locationCallback 설정
         locationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
                 if (locationResult == null) {
-                    Log.e(TAG, "위치 업데이트 실패: locationResult가 null입니다.");
                     return;
                 }
                 for (Location location : locationResult.getLocations()) {
-                    if (location != null) {
-                        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-                        startPointCoords = latLng.longitude + "," + latLng.latitude;
-                        currentLocation = latLng; // 현재 위치를 currentLocation에 업데이트
-                        updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
+                    LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+                    startPointCoords = latLng.longitude + "," + latLng.latitude;
+                    updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
 
-                        // 위치 오버레이 업데이트
-                        if (naverMap != null) {
-                            LocationOverlay locationOverlay = naverMap.getLocationOverlay();
-                            locationOverlay.setPosition(latLng); // 현재 위치로 원 위치 설정
-                        }
-                    }
+                    // 위치 오버레이 업데이트
+                    LocationOverlay locationOverlay = naverMap.getLocationOverlay();
+                    locationOverlay.setPosition(latLng); // 현재 위치로 원 위치 설정
                 }
             }
         };
 
-        // LocationRequest 설정
+        // LocationRequest 및 권한 요청 설정
         LocationRequest locationRequest = LocationRequest.create();
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setInterval(10000);
         locationRequest.setFastestInterval(5000);
 
-        // 위치 권한 확인 및 요청
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this,
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     LOCATION_PERMISSION_REQUEST_CODE);
-            return;
-        }
-
-        // 위치 업데이트 요청
-        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
-    }
-
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startLocationUpdates(); // 위치 업데이트 시작
-            } else {
-                Toast.makeText(this, "위치 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
-            }
+        } else {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, null);
         }
     }
-
-
 
     private Bitmap createTriangleMarker() {
         int width = 100;  // 삼각형 너비
@@ -642,15 +543,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == SEARCH_RESULT_REQUEST_CODE && resultCode == RESULT_OK) {
             if (data != null) {
-                String roadAddress = data.getStringExtra("roadAddress");
-                if (roadAddress != null) {
-                    geocodeSelectedLocation(roadAddress); // 선택한 도로명 주소를 이용해 경로를 표시
-                }
+                String selectedPlace = data.getStringExtra("selectedPlace");
+                geocodeSelectedLocation(selectedPlace);
             }
         }
     }
-
-
 
     private void disconnectFromDevice() {
         try {
@@ -710,26 +607,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onFailure(Call call, IOException e) {
                 e.printStackTrace();
-                Log.e(TAG, "지오코딩 요청 실패: " + e.getMessage());
+                Log.e(TAG, "Geocoding 요청 실패: " + e.getMessage());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    Log.e(TAG, "지오코딩 응답 실패: " + response.code() + " " + response.message());
+                    Log.e(TAG, "Geocoding 응답 실패: " + response.code() + " " + response.message());
                     return;
                 }
 
                 String responseData = response.body().string();
+                Log.d(TAG, "Geocoding 응답 데이터: " + responseData);
                 try {
                     JSONObject jsonResponse = new JSONObject(responseData);
                     JSONArray addresses = jsonResponse.getJSONArray("addresses");
                     if (addresses.length() > 0) {
                         JSONObject addressObj = addresses.getJSONObject(0);
                         targetPointCoords = addressObj.getString("x") + "," + addressObj.getString("y");
-                        showRoute(); // 변환된 좌표를 사용하여 경로 표시
+                        Log.d(TAG, "Geocoding 결과 - targetPointCoords: " + targetPointCoords);
+                        showRoute();
                     } else {
-                        Log.e(TAG, "지오코딩 결과가 없습니다.");
+                        Log.e(TAG, "Geocoding 결과가 없습니다.");
                     }
                 } catch (JSONException e) {
                     e.printStackTrace();
@@ -751,7 +650,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    Log.e(TAG, "경로 응답 실패: " + response.code() + " " + response.message());
+                    Log.e(TAG, "응답 실패: " + response.code() + " " + response.message());
+                    Log.e(TAG, "응답 본문: " + response.body().string());
                     return;
                 }
 
@@ -795,7 +695,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
     }
-
 
     private double calculateDistance(LatLng start, LatLng end) {
         double earthRadius = 6371000;
