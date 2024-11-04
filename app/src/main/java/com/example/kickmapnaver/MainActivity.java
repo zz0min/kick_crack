@@ -47,6 +47,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 import com.naver.maps.geometry.LatLng;
 import com.naver.maps.geometry.LatLngBounds;
+import com.naver.maps.map.CameraPosition;
 import com.naver.maps.map.CameraUpdate;
 import com.naver.maps.map.LocationTrackingMode;
 import com.naver.maps.map.MapFragment;
@@ -132,12 +133,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         additionalInfoLayout = findViewById(R.id.additionalInfoLayout);
         ImageButton toggleButton = findViewById(R.id.toggleButton);
-
         alertTextView = findViewById(R.id.alertTextView);
 
         // 소리 파일 초기화
         mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
         alertHandler = new Handler();
+
         // 사운드 및 테두리 깜박임 효과
         mediaPlayer.setOnCompletionListener(mp -> mediaPlayer.seekTo(0)); // 반복 재생 가능하게 설정
 
@@ -152,12 +153,59 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             isInfoVisible = !isInfoVisible;
         });
 
+        // 경로 방향 버튼 초기화
+        Button routeDirectionButton = findViewById(R.id.routeDirectionButton);
+        routeDirectionButton.setOnClickListener(v -> moveToRouteDirection());
+
         initBluetoothUI();
         initMapUI();
         startLocationUpdates();
+
         // 주기적으로 마커를 불러오는 작업 시작
         startLoadingMarkersPeriodically();
     }
+
+    // 경로 방향으로 카메라를 이동하는 메서드
+    private void moveToRouteDirection() {
+        if (naverMap != null && path.getCoords() != null && !path.getCoords().isEmpty() && currentLocation != null) {
+            // 경로의 첫 번째 지점을 가져옵니다.
+            LatLng firstPoint = path.getCoords().get(0);
+
+            // 현재 위치와 첫 번째 지점 사이의 방위 각도를 계산합니다.
+            double angle = calculateBearing(currentLocation, firstPoint);
+
+            // 카메라 위치, 기울기, 회전 설정
+            CameraPosition cameraPosition = new CameraPosition(
+                    currentLocation, // 현재 위치를 중심으로 설정
+                    16,              // 줌 레벨
+                    30,              // 기울기 (tilt)
+                    (float) angle    // 회전 각도 (bearing)
+            );
+
+            // NaverMap에 카메라 업데이트
+            naverMap.setCameraPosition(cameraPosition);
+
+            Toast.makeText(this, "경로 방향으로 카메라 이동", Toast.LENGTH_SHORT).show();
+        } else {
+            Toast.makeText(this, "경로 정보가 없습니다.", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+
+    // 두 지점 사이의 방위 각도를 계산하는 메서드
+    private double calculateBearing(LatLng start, LatLng end) {
+        double startLat = Math.toRadians(start.latitude);
+        double startLng = Math.toRadians(start.longitude);
+        double endLat = Math.toRadians(end.latitude);
+        double endLng = Math.toRadians(end.longitude);
+
+        double dLng = endLng - startLng;
+        double y = Math.sin(dLng) * Math.cos(endLat);
+        double x = Math.cos(startLat) * Math.sin(endLat) -
+                Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
+        return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+    }
+
 
     private void initBluetoothUI() {
         crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
@@ -855,11 +903,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             alertHandler.postDelayed(() -> mediaPlayer.start(), 2000);
         }
     }
-
-
-
-
-
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {

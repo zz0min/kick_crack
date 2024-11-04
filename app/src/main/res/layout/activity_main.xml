@@ -82,6 +82,19 @@
         android:textSize="36sp"
         android:textColor="#000" />
 
+    <!-- 경로 방향 버튼 -->
+    <Button
+        android:id="@+id/routeDirectionButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentBottom="true"
+        android:layout_marginStart="16dp"
+        android:layout_marginBottom="100dp"
+        android:text="네비게이션 모드"
+        android:textColor="@android:color/white"
+        android:background="#4CAF50"
+        android:padding="8dp" />
 
     <!-- Connect, Disconnect 버튼을 포함하는 LinearLayout -->
     <LinearLayout
