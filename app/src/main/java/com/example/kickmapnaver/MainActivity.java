@@ -13,10 +13,14 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.location.Location;
+import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -24,11 +28,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Path;
-import android.graphics.Paint;
-import android.graphics.Canvas;
-import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Color;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -39,7 +39,12 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.location.Priority;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.naver.maps.geometry.LatLng;
 import com.naver.maps.geometry.LatLngBounds;
 import com.naver.maps.map.CameraUpdate;
@@ -60,9 +65,18 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -98,6 +112,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private boolean isRouteDisplayed = false;
     private boolean isInfoVisible = false;
 
+    private MediaPlayer mediaPlayer;
+    private TextView alertTextView;
+    private Handler alertHandler;
+
+    private double currentLatitude;
+    private double currentLongitude;
+
+    private final Handler handler = new Handler();
+    private final int INTERVAL = 30000; // 30초 (밀리초 단위)
+
+    // 마커 리스트를 유지하는 변수 추가
+    private List<Marker> markers = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -105,6 +132,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         additionalInfoLayout = findViewById(R.id.additionalInfoLayout);
         ImageButton toggleButton = findViewById(R.id.toggleButton);
+
+        alertTextView = findViewById(R.id.alertTextView);
+
+        // 소리 파일 초기화
+        mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
+        alertHandler = new Handler();
+        // 사운드 및 테두리 깜박임 효과
+        mediaPlayer.setOnCompletionListener(mp -> mediaPlayer.seekTo(0)); // 반복 재생 가능하게 설정
 
         toggleButton.setOnClickListener(v -> {
             if (isInfoVisible) {
@@ -119,6 +154,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         initBluetoothUI();
         initMapUI();
+        startLocationUpdates();
+        // 주기적으로 마커를 불러오는 작업 시작
+        startLoadingMarkersPeriodically();
     }
 
     private void initBluetoothUI() {
@@ -247,14 +285,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         locationOverlay.setVisible(true); // 위치 오버레이 표시
         locationOverlay.setZIndex(1); // Z-Index 설정하여 다른 레이어 위에 표시
 
+        //오래된 데이터 삭제 후 Firebase에서 데이터 불러와 마커 그리기
+        removeOldDataAndLoadMarkers();
+
         // 카메라 위치 업데이트
         naverMap.moveCamera(CameraUpdate.scrollTo(new LatLng(34.81233, 126.43940))); // 초기 카메라 위치 설정
 
-        // 위험 마크 표시
-        drawWarningMarker(new LatLng(34.910375, 126.435491), "위험지역");
-        drawWarningMarker(new LatLng(34.910573, 126.436580), "위험지역");
-        drawWarningMarker(new LatLng(34.910618, 126.434664), "위험지역");
-        drawWarningMarker(new LatLng(34.908200, 126.433954), "위험지역");
 
         // 카메라 이동 상태 체크
         naverMap.addOnCameraIdleListener(() -> {
@@ -290,6 +326,118 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         warningMarker.setCaptionText(description); // 설명 추가
     }
 
+    private final Runnable loadMarkersRunnable = new Runnable() {
+        @Override
+        public void run() {
+            loadWarningMarkersFromFirebase();
+            handler.postDelayed(this, INTERVAL); // 30초 후에 다시 실행
+        }
+    };
+
+    // 주기적 실행 시작 메소드
+    private void startLoadingMarkersPeriodically() {
+        handler.post(loadMarkersRunnable);
+    }
+
+    // 주기적 실행 중단 메소드
+    private void stopLoadingMarkersPeriodically() {
+        handler.removeCallbacks(loadMarkersRunnable);
+    }
+
+
+
+    private void loadWarningMarkersFromFirebase() {
+        FirebaseDatabase database = FirebaseDatabase.getInstance();
+        DatabaseReference locationRef = database.getReference("locations");
+
+        // 기존 마커 제거
+        for (Marker marker : markers) {
+            marker.setMap(null);
+        }
+        markers.clear(); // 마커 리스트 초기화
+
+        locationRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                    LocationData locationData = snapshot.getValue(LocationData.class);
+                    if (locationData != null) {
+                        LatLng location = new LatLng(locationData.latitude, locationData.longitude);
+                        String description = "Frequency: " + locationData.frequency +
+                                ", Intensity: " + locationData.intensity +
+                                ", Timestamp: " + locationData.timestamp;
+
+                        // drawWarningMarker 메소드를 사용해 마커 그리기
+                        drawWarningMarker(location, description);
+                    }
+                }
+                Log.d(TAG, "Firebase 데이터로 마커 추가 완료");
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+                Log.e(TAG, "Firebase 데이터 불러오기 실패: " + databaseError.getMessage());
+            }
+        });
+    }
+
+
+
+    private void removeOldDataAndLoadMarkers() {
+        FirebaseDatabase database = FirebaseDatabase.getInstance();
+        DatabaseReference locationRef = database.getReference("locations");
+
+        // 현재 날짜에서 30일 전 날짜 계산
+        Calendar calendar = Calendar.getInstance();
+        calendar.add(Calendar.DAY_OF_YEAR, -30);
+        Date thirtyDaysAgo = calendar.getTime();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+
+        locationRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                boolean dataDeleted = false;
+
+                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                    LocationData locationData = snapshot.getValue(LocationData.class);
+                    if (locationData != null && locationData.timestamp != null) {
+                        try {
+                            Date dataDate = sdf.parse(locationData.timestamp);
+                            if (dataDate != null && dataDate.before(thirtyDaysAgo)) {
+                                snapshot.getRef().removeValue()
+                                        .addOnSuccessListener(aVoid -> Log.d("removeOldData", "오래된 데이터 삭제 성공"))
+                                        .addOnFailureListener(e -> Log.e("removeOldData", "오래된 데이터 삭제 실패", e));
+                                dataDeleted = true;
+                            }
+                        } catch (ParseException e) {
+                            Log.e("removeOldData", "날짜 파싱 실패: " + e.getMessage());
+                        }
+                    }
+                }
+                // 모든 데이터 삭제 작업이 완료된 후 마커를 그리기 위한 메소드 호출
+                if (dataDeleted) {
+                    locationRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                        @Override
+                        public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                            loadWarningMarkersFromFirebase();
+                        }
+
+                        @Override
+                        public void onCancelled(@NonNull DatabaseError databaseError) {
+                            Log.e(TAG, "데이터 다시 불러오기 실패: " + databaseError.getMessage());
+                        }
+                    });
+                } else {
+                    loadWarningMarkersFromFirebase(); // 삭제할 데이터가 없으면 바로 마커 로드
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+                Log.e("removeOldData", "데이터 불러오기 실패: " + databaseError.getMessage());
+            }
+        });
+    }
 
 
 
@@ -303,6 +451,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 for (Location location : locationResult.getLocations()) {
                     LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
                     startPointCoords = latLng.longitude + "," + latLng.latitude;
+
+                    Log.d(TAG, "주기적인 위치 업데이트 - 위도: " + latLng.longitude + ", 경도: " + latLng.latitude);
                     updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
 
                     // 위치 오버레이 업데이트
@@ -312,11 +462,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         };
 
-        // LocationRequest 및 권한 요청 설정
-        LocationRequest locationRequest = LocationRequest.create();
-        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-        locationRequest.setInterval(10000);
-        locationRequest.setFastestInterval(5000);
+        LocationRequest locationRequest = new LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000) // 1초 주기
+                .setMinUpdateIntervalMillis(1000) // 가장 빠른 업데이트 간격 1초
+                .build();
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -421,54 +569,35 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
 
             bluetoothServerSocket = bluetoothAdapter.listenUsingRfcommWithServiceRecord("MyApp", MY_UUID);
-            new Thread(new AcceptConnectionTask()).start();
+            new Thread(new AcceptConnectionTask()).start(); // AcceptConnectionTask를 서버 소켓에서 실행
         } catch (IOException e) {
             Log.e(TAG, "Failed to start server socket", e);
         }
     }
 
+    // AcceptConnectionTask에서 bluetoothSocket을 새로 할당하는 방식으로 변경
     private class AcceptConnectionTask implements Runnable {
         @Override
         public void run() {
+            BluetoothSocket socket;
             try {
-                InputStream inputStream = bluetoothSocket.getInputStream();
-                byte[] buffer = new byte[1024];
-                int bytes;
-
-                while (bluetoothSocket.isConnected()) {
-                    bytes = inputStream.read(buffer);
-                    if (bytes > 0) {
-                        String message = new String(buffer, 0, bytes);
-                        String content = message.substring(1);
-
-                        switch (message.charAt(0)) {
-                            case '1':
-                                runOnUiThread(() -> crackDetectionTextView.setText("균열 탐지: " + content));
-                                break;
-                            case '2':
-                                runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
-                                break;
-                            case '3':
-                                runOnUiThread(() -> impactTextView.setText("충격량: " + content));
-                                break;
-                            case '4':
-                                runOnUiThread(() -> {
-                                    speedTextView.setText("속도: " + content + " km/h");
-                                    double speed = Double.parseDouble(content);
-                                    updateEstimatedTime(speed);
-                                });
-                                break;
-                            default:
-                                Log.w(TAG, "Unknown message type received: " + message);
-                        }
-                    }
+                Log.d(TAG, "Waiting for client to connect...");
+                socket = bluetoothServerSocket.accept(); // 연결 수락 시 새 소켓을 생성
+                if (socket != null) {
+                    bluetoothSocket = socket; // 새로 생성된 소켓을 bluetoothSocket에 할당
+                    Log.d(TAG, "Client connected");
+                    showConnectionSuccessDialog(); // 연결 성공 시 알림 표시
+                    new Thread(new ReceiveMessageTask()).start(); // 새로운 ReceiveMessageTask 스레드 시작
+                    bluetoothServerSocket.close(); // 서버 소켓 닫기
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Error reading message", e);
+                Log.e(TAG, "Error accepting connection", e);
             }
         }
     }
 
+
+    // connectToDevice 메서드 수정 - 연결 후 새 소켓 할당 방식 동일
     private void connectToDevice(String address) {
         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
         try {
@@ -477,17 +606,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return;
             }
 
-            bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID);
+            bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID); // BluetoothSocket 새로 생성
             bluetoothSocket.connect();
             Log.d(TAG, "Connected to " + address);
 
-            showConnectionSuccessDialog();
-            new Thread(new ReceiveMessageTask()).start();
+            showConnectionSuccessDialog(); // 연결 성공 시 다이얼로그 표시
+            new Thread(new ReceiveMessageTask()).start(); // 수신 스레드 시작
 
         } catch (IOException e) {
             Log.e(TAG, "Connection failed", e);
         }
-
     }
 
     private void showConnectionSuccessDialog() {
@@ -516,17 +644,114 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                         switch (message.charAt(0)) {
                             case '1':
-                                runOnUiThread(() -> crackDetectionTextView.setText("균열 탐지: " + content));
+                                runOnUiThread(() -> {
+                                    crackDetectionTextView.setText("균열 탐지: " + content);
+                                    showAlert();
+                                });
+
+                                if (currentLocation != null) {
+                                    double latitude = currentLocation.latitude;
+                                    double longitude = currentLocation.longitude;
+                                    int newIntensity = Integer.parseInt(content);
+
+                                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+                                    String timestamp = sdf.format(new Date());
+
+                                    FirebaseDatabase database = FirebaseDatabase.getInstance();
+                                    DatabaseReference locationRef = database.getReference("locations");
+
+                                    locationRef.get().addOnSuccessListener(dataSnapshot -> {
+                                        boolean nearbyDataFound = false;
+                                        for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                                            LocationData existingData = snapshot.getValue(LocationData.class);
+                                            if (existingData != null) {
+                                                double distance = calculateDistance(latitude, longitude, existingData.latitude, existingData.longitude);
+                                                if (distance <= 5) {
+                                                    // 기존 데이터가 반경 5m 내에 있음 -> 업데이트
+                                                    int updatedFrequency = existingData.frequency + 1;
+                                                    int updatedIntensity = (existingData.intensity + newIntensity) / 2;
+
+                                                    snapshot.getRef().child("frequency").setValue(updatedFrequency);
+                                                    snapshot.getRef().child("intensity").setValue(updatedIntensity);
+                                                    snapshot.getRef().child("timestamp").setValue(timestamp);
+
+                                                    Log.d(TAG, "기존 데이터 갱신 완료");
+                                                    nearbyDataFound = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if (!nearbyDataFound) {
+                                            // 반경 5m 내에 데이터가 없으면 새 데이터 추가
+                                            LocationData newData = new LocationData(latitude, longitude, 1, newIntensity, timestamp);
+                                            locationRef.push().setValue(newData)
+                                                    .addOnSuccessListener(aVoid -> Log.d(TAG, "새로운 위치 데이터 저장 성공"))
+                                                    .addOnFailureListener(e -> Log.e(TAG, "위치 데이터 저장 실패", e));
+                                        }
+                                    }).addOnFailureListener(e -> Log.e(TAG, "Firebase 데이터 읽기 실패", e));
+                                } else {
+                                    Log.e(TAG, "현재 위치가 null입니다. 위치 정보를 저장할 수 없습니다.");
+                                }
                                 break;
+
                             case '2':
                                 runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
                                 break;
+
                             case '3':
                                 runOnUiThread(() -> impactTextView.setText("충격량: " + content));
+
+                                if (currentLocation != null) {
+                                    double latitude = currentLocation.latitude;
+                                    double longitude = currentLocation.longitude;
+                                    int newIntensity = Integer.parseInt(content);
+
+                                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+                                    String timestamp = sdf.format(new Date());
+
+                                    FirebaseDatabase database = FirebaseDatabase.getInstance();
+                                    DatabaseReference locationRef = database.getReference("locations");
+
+                                    locationRef.get().addOnSuccessListener(dataSnapshot -> {
+                                        boolean nearbyDataFound = false;
+                                        for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                                            LocationData existingData = snapshot.getValue(LocationData.class);
+                                            if (existingData != null) {
+                                                double distance = calculateDistance(latitude, longitude, existingData.latitude, existingData.longitude);
+                                                if (distance <= 5) {
+                                                    // 기존 데이터가 반경 5m 내에 있음 -> 업데이트
+                                                    int updatedFrequency = existingData.frequency + 1;
+                                                    int updatedIntensity = (existingData.intensity + newIntensity) / 2;
+
+                                                    snapshot.getRef().child("frequency").setValue(updatedFrequency);
+                                                    snapshot.getRef().child("intensity").setValue(updatedIntensity);
+                                                    snapshot.getRef().child("timestamp").setValue(timestamp);
+
+                                                    Log.d(TAG, "기존 데이터 갱신 완료");
+                                                    nearbyDataFound = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+
+                                        if (!nearbyDataFound) {
+                                            // 반경 5m 내에 데이터가 없으면 새 데이터 추가
+                                            LocationData newData = new LocationData(latitude, longitude, 1, newIntensity, timestamp);
+                                            locationRef.push().setValue(newData)
+                                                    .addOnSuccessListener(aVoid -> Log.d(TAG, "새로운 위치 데이터 저장 성공"))
+                                                    .addOnFailureListener(e -> Log.e(TAG, "위치 데이터 저장 실패", e));
+                                        }
+                                    }).addOnFailureListener(e -> Log.e(TAG, "Firebase 데이터 읽기 실패", e));
+                                } else {
+                                    Log.e(TAG, "현재 위치가 null입니다. 위치 정보를 저장할 수 없습니다.");
+                                }
                                 break;
+
                             case '4':
                                 runOnUiThread(() -> speedTextView.setText("속도: " + content));
                                 break;
+
                             default:
                                 Log.w(TAG, "Unknown message type received: " + message);
                         }
@@ -536,7 +761,105 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Log.e(TAG, "Error reading message", e);
             }
         }
+
+        // 거리 계산 메소드 (반경 5m 체크)
+        private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+            double earthRadius = 6371e3; // 지구 반경 (미터)
+            double dLat = Math.toRadians(lat2 - lat1);
+            double dLon = Math.toRadians(lon2 - lon1);
+            double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return earthRadius * c;
+        }
     }
+
+
+
+    private void getCurrentLocation() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+            return;
+        }
+
+        FusedLocationProviderClient fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        fusedLocationClient.getLastLocation()
+                .addOnSuccessListener(location -> {
+                    if (location != null) {
+                        // 위치 정보를 변수에 저장
+                        currentLatitude = location.getLatitude();
+                        currentLongitude = location.getLongitude();
+
+                        // 현재 위치 정보를 사용하여 UI 업데이트 또는 다른 동작 수행
+                        Log.d("CurrentLocation", "현재 위치 - 위도: " + currentLatitude + ", 경도: " + currentLongitude);
+                        Toast.makeText(MainActivity.this, "현재 위치: 위도 " + currentLatitude + ", 경도 " + currentLongitude, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Log.e("CurrentLocation", "위치를 가져올 수 없습니다.");
+                        Toast.makeText(MainActivity.this, "위치를 가져올 수 없습니다.", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e("CurrentLocation", "위치 가져오기 실패: " + e.getMessage());
+                    Toast.makeText(MainActivity.this, "위치 가져오기 실패: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+    }
+
+    public static class LocationData {
+        public double latitude;
+        public double longitude;
+        public int frequency;
+        public int intensity;
+        public String timestamp;
+
+        // 기본 생성자 (필수)
+        public LocationData() {
+            // Firebase가 객체를 역직렬화할 때 필요
+        }
+
+        public LocationData(double latitude, double longitude, int frequency, int intensity, String timestamp) {
+            this.latitude = latitude;
+            this.longitude = longitude;
+            this.frequency = frequency;
+            this.intensity = intensity;
+            this.timestamp = timestamp;
+        }
+    }
+
+    // 알림과 테두리 깜박임 효과
+    private void showAlert() {
+        // 소리 1초 간격으로 3번 재생
+        playAlertSound();
+
+        // 테두리 깜박임 애니메이션
+        Animation borderBlinkAnimation = new AlphaAnimation(1, 0);
+        borderBlinkAnimation.setDuration(500);
+        borderBlinkAnimation.setRepeatMode(Animation.REVERSE);
+        borderBlinkAnimation.setRepeatCount(5); // 1초 간격으로 3번 반복
+
+        // 알림 텍스트 깜박임 및 표시
+        alertTextView.setVisibility(View.VISIBLE);
+        alertTextView.startAnimation(borderBlinkAnimation);
+
+        // 3초 후에 텍스트와 테두리 숨기기
+        alertHandler.postDelayed(() -> {
+            alertTextView.setVisibility(View.GONE);
+        }, 3000);
+    }
+
+    // 소리 재생 메서드
+    private void playAlertSound() {
+        if (mediaPlayer != null) {
+            mediaPlayer.start();
+            alertHandler.postDelayed(() -> mediaPlayer.start(), 1000);
+            alertHandler.postDelayed(() -> mediaPlayer.start(), 2000);
+        }
+    }
+
+
+
+
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -734,6 +1057,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onDestroy() {
         super.onDestroy();
         disconnectFromDevice();
+        stopLoadingMarkersPeriodically();
         try {
             if (bluetoothServerSocket != null) {
                 bluetoothServerSocket.close();
