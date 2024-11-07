@@ -1,5 +1,7 @@
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
@@ -63,38 +65,29 @@
         android:layout_width="40dp"
         android:layout_height="40dp"
         android:layout_below="@id/search_bar"
-        android:layout_alignParentStart="true"
-        android:layout_marginStart="8dp"
+        android:layout_alignParentEnd="true"
+        android:layout_marginEnd="8dp"
         android:layout_marginTop="8dp"
         android:background="@android:color/transparent"
         android:src="@android:drawable/ic_menu_more"
         android:contentDescription="Toggle Options" />
 
-    <!-- 속도 텍스트 -->
-    <TextView
-        android:id="@+id/speedTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/search_bar"
-        android:layout_marginTop="8dp"
-        android:layout_centerHorizontal="true"
-        android:text="0 km/h"
-        android:textSize="36sp"
-        android:textColor="#000" />
+
 
     <!-- 경로 방향 버튼 -->
-    <Button
+    <ImageButton
         android:id="@+id/routeDirectionButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
         android:layout_alignParentStart="true"
         android:layout_alignParentBottom="true"
-        android:layout_marginStart="16dp"
+        android:layout_marginStart="12dp"
         android:layout_marginBottom="100dp"
-        android:text="네비게이션 모드"
-        android:textColor="@android:color/white"
-        android:background="#4CAF50"
+        android:src="@drawable/navigation"
+        android:background="@android:color/transparent"
+        android:contentDescription="내비게이션 모드"
         android:padding="8dp" />
+
 
     <!-- Connect, Disconnect 버튼을 포함하는 LinearLayout -->
     <LinearLayout
@@ -106,25 +99,81 @@
         android:layout_margin="16dp"
         android:gravity="center">
 
-        <Button
+
+        <ImageButton
             android:id="@+id/connectbutton"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
-            android:text="Connect"
-            android:textColor="@android:color/black"
-            android:backgroundTint="@android:color/white"
+            android:src="@drawable/bluetooth1"
+            android:background="@android:color/transparent"
+            android:contentDescription="Connect"
             android:layout_marginBottom="8dp"
             android:padding="8dp" />
 
-        <Button
+        <ImageButton
             android:id="@+id/disconnectbutton"
             android:layout_width="wrap_content"
             android:layout_height="40dp"
-            android:text="Disconnect"
-            android:textColor="@android:color/white"
-            android:backgroundTint="#B0B0B0"
+            android:src="@drawable/bluetooth2"
+            android:background="@android:color/transparent"
+            android:contentDescription="Disconnect"
             android:padding="8dp" />
+
     </LinearLayout>
+
+    <!-- CardView로 이미지와 속도를 감싸는 컨테이너 -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/speedCard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/search_bar"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="16dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
+        android:layout_gravity="center">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="8dp"
+            android:background="@drawable/green_border_background">
+
+            <ImageView
+                android:id="@+id/kickboardImage"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/kickboard2"
+                android:layout_marginEnd="40dp" />
+
+            <TextView
+                android:id="@+id/speedTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0 km/h"
+                android:textSize="36sp"
+                android:textColor="#000" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>ㄴ
+
+
+    <!-- 예상 소요 시간 TextView -->
+    <TextView
+    android:id="@+id/estimatedTimeTextView"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_below="@id/speedCard"
+    android:layout_marginTop="8dp"
+    android:layout_marginStart="16dp"
+    android:padding="8dp"
+    android:text="예상 소요 시간: 0분"
+    android:textSize="16sp"
+    android:textStyle="bold"
+    android:background="@drawable/green_border_background"
+    android:gravity="center" />
+
 
     <!-- 추가 정보 레이아웃 -->
     <LinearLayout
@@ -157,13 +206,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="충격량: -"
-            android:textSize="18sp" />
-
-        <TextView
-            android:id="@+id/estimatedTimeTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="예상 소요 시간: -"
             android:textSize="18sp" />
     </LinearLayout>
 

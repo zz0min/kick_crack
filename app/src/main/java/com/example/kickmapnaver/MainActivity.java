@@ -157,9 +157,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             isInfoVisible = !isInfoVisible;
         });
 
-        // 경로 방향 버튼 초기화
-        Button routeDirectionButton = findViewById(R.id.routeDirectionButton);
+        // 예상 소요 시간 TextView 참조
+        estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView);
+
+        // 경로 방향 버튼을 ImageButton으로 참조
+        ImageButton routeDirectionButton = findViewById(R.id.routeDirectionButton);
         routeDirectionButton.setOnClickListener(v -> moveToRouteDirection());
+
+        // Bluetooth UI 버튼 참조 - ImageButton으로 변경
+        ImageButton connectButton = findViewById(R.id.connectbutton);
+        ImageButton disconnectButton = findViewById(R.id.disconnectbutton);
+
+        // 버튼 클릭 리스너 추가 (예시)
+        connectButton.setOnClickListener(v -> connectBluetooth());
+        disconnectButton.setOnClickListener(v -> disconnectBluetooth());
 
         initBluetoothUI();
         initMapUI();
@@ -168,6 +179,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // 주기적으로 마커를 불러오는 작업 시작
         startLoadingMarkersPeriodically();
     }
+
+    private void connectBluetooth() {
+        // Bluetooth 연결을 처리하는 로직을 여기에 추가하세요
+        Toast.makeText(this, "Bluetooth 연결 시도 중...", Toast.LENGTH_SHORT).show();
+    }
+
+    private void disconnectBluetooth() {
+        // Bluetooth 연결 해제를 처리하는 로직을 여기에 추가하세요
+        Toast.makeText(this, "Bluetooth 연결 해제 중...", Toast.LENGTH_SHORT).show();
+    }
+
+
 
     // 경로 방향으로 카메라를 이동하는 메서드
     private void moveToRouteDirection() {
@@ -244,7 +267,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView);
 
-        Button connectButton = findViewById(R.id.connectbutton);
+        ImageButton connectButton = findViewById(R.id.connectbutton);
         connectButton.setOnClickListener(v -> {
             if (checkAndRequestPermissions()) {
                 startServerSocket();
@@ -252,7 +275,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
 
-        Button disconnectButton = findViewById(R.id.disconnectbutton);
+        ImageButton disconnectButton = findViewById(R.id.disconnectbutton);
         disconnectButton.setOnClickListener(v -> disconnectFromDevice());
 
         Button searchButton = findViewById(R.id.search_button);
@@ -1125,6 +1148,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             isRouteDisplayed = true;
                             naverMap.moveCamera(CameraUpdate.fitBounds(bounds).finishCallback(() -> isCameraUpdating = false));
                         }
+
+                        // 예상 소요 시간 업데이트
+                        double averageSpeedKmh = 50.0; // 예시로 평균 속도 50km/h 사용 (필요에 따라 조정 가능)
+                        updateEstimatedTime(averageSpeedKmh);
+
                     } catch (JSONException e) {
                         e.printStackTrace();
                         Log.e(TAG, "JSON 파싱 실패: " + e.getMessage());
