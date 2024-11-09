@@ -183,7 +183,7 @@
                 android:textSize="36sp"
                 android:textColor="#000" />
         </LinearLayout>
-    </androidx.cardview.widget.CardView>ㄴ
+    </androidx.cardview.widget.CardView>
 
 
     <!-- 예상 소요 시간 TextView -->

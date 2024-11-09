@@ -192,7 +192,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (path != null) {
             path.setMap(null); // 경로를 지도에서 제거
             isRouteDisplayed = false; // 경로 표시 상태를 초기화
-            Log.d(TAG, "경로가 취소되었습니다.");
+            Log.d(TAG, "경로안내가 취소되었습니다.");
 
             // 사용자에게 경로가 취소되었음을 알리는 UI 메시지
             runOnUiThread(() -> {
