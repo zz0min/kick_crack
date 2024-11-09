@@ -238,6 +238,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 new Handler().postDelayed(() -> rootLayout.removeView(messageTextView), 2000);
 
+                distanceTextView.setText("거리: 0 km");
                 estimatedTimeTextView.setText("예상 소요 시간: 0분");
                 stopProximityCheck();
             });
