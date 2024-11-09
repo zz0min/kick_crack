@@ -90,6 +90,7 @@ import okhttp3.Response;
 
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
+    private LinearLayout searchLayout;
     private TextView distanceTextView;
     private static final String TAG = "BluetoothReceiver";
     private static final String DEVICE_ADDRESS = "D8:3A:DD:1E:54:69";
@@ -150,7 +151,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         distanceTextView = findViewById(R.id.distanceTextView); // 거리 TextView
         speedTextView = findViewById(R.id.speedTextView); // 속도 TextView
 
-        alertTextView = findViewById(R.id.alertTextView);
+        searchLayout = findViewById(R.id.search_layout); // 검색창 레이아웃 초기화
 
         // 소리 파일 초기화
         mediaPlayer = MediaPlayer.create(this, R.raw.alert_sound);
@@ -159,12 +160,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // 사운드 및 테두리 깜박임 효과
         mediaPlayer.setOnCompletionListener(mp -> mediaPlayer.seekTo(0)); // 반복 재생 가능하게 설정
 
-        // 예상 소요 시간 TextView 참조
-        estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView);
-
         // 경로 방향 버튼을 ImageButton으로 참조
         ImageButton routeDirectionButton = findViewById(R.id.routeDirectionButton);
-        routeDirectionButton.setOnClickListener(v -> moveToRouteDirection());
+        routeDirectionButton.setOnClickListener(v -> {
+            moveToRouteDirection();
+        });
 
         // Bluetooth UI 버튼 참조 - ImageButton으로 변경
         ImageButton connectButton = findViewById(R.id.connectbutton);
@@ -176,13 +176,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         // 경로 취소 버튼 설정
         ImageButton cancelRouteButton = findViewById(R.id.cancelRouteButton);
-        cancelRouteButton.setOnClickListener(v -> cancelRoute());
+        cancelRouteButton.setOnClickListener(v -> {
+            cancelRoute();
+            showSearchLayout(); // 경로 취소 시 검색창 다시 표시
+        });
 
         // ImageView 초기화
         kickboardImage = findViewById(R.id.kickboardImage);
 
         // 초기화 이후 필요한 코드 작성
-        // 예를 들어, 시작 시 kickboardImage의 초기 회전 설정
         kickboardImage.setRotation(0);
         initBluetoothUI();
         initMapUI();
@@ -192,26 +194,38 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         startLoadingMarkersPeriodically();
     }
 
+    // 검색창 숨기기 메서드
+    private void hideSearchLayout() {
+        if (searchLayout != null) {
+            System.out.println("검색창 하이드 테스트");
+            searchLayout.setVisibility(View.GONE);
+        }
+    }
+
+    // 검색창 표시 메서드
+    private void showSearchLayout() {
+        if (searchLayout != null) {
+            System.out.println("검색창 하이드 테스트");
+            searchLayout.setVisibility(View.VISIBLE);
+        }
+    }
+
     private void cancelRoute() {
         if (path != null) {
             path.setMap(null); // 경로를 지도에서 제거
             isRouteDisplayed = false; // 경로 표시 상태를 초기화
-            Log.d(TAG, "경로안내가 취소되었습니다.");
+            Log.d(TAG, "경로 안내가 취소되었습니다.");
 
-
-            // 사용자에게 경로가 취소되었음을 알리는 UI 메시지
             runOnUiThread(() -> {
-                // 메시지 표시를 위한 TextView 생성
                 TextView messageTextView = new TextView(this);
-                messageTextView.setText("경로안내가 취소되었습니다.");
+                messageTextView.setText("경로 안내가 취소되었습니다.");
                 messageTextView.setTextSize(18);
-                messageTextView.setTextColor(Color.BLACK); // 검은색 글자
-                messageTextView.setBackgroundColor(Color.WHITE); // 하얀 배경
+                messageTextView.setTextColor(Color.BLACK);
+                messageTextView.setBackgroundColor(Color.WHITE);
                 messageTextView.setPadding(20, 20, 20, 20);
                 messageTextView.setGravity(Gravity.CENTER);
-                messageTextView.setBackgroundResource(R.drawable.red_border_background); // 빨간색 테두리 적용
+                messageTextView.setBackgroundResource(R.drawable.red_border_background);
 
-                // 레이아웃 파라미터 설정 (화면 중앙에 위치)
                 RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(
                         RelativeLayout.LayoutParams.WRAP_CONTENT,
                         RelativeLayout.LayoutParams.WRAP_CONTENT
@@ -219,15 +233,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 layoutParams.addRule(RelativeLayout.CENTER_IN_PARENT);
                 messageTextView.setLayoutParams(layoutParams);
 
-                // 메시지를 추가할 루트 레이아웃 찾기
                 RelativeLayout rootLayout = findViewById(R.id.root_layout);
                 rootLayout.addView(messageTextView);
 
-                // 일정 시간 후 메시지를 제거
-                new Handler().postDelayed(() -> rootLayout.removeView(messageTextView), 2000); // 2초 후 제거
+                new Handler().postDelayed(() -> rootLayout.removeView(messageTextView), 2000);
+
                 estimatedTimeTextView.setText("예상 소요 시간: 0분");
                 stopProximityCheck();
             });
+        }
+    }
+
+    private void hideSearchBar() {
+        if (searchLayout != null) {
+            searchLayout.setVisibility(View.INVISIBLE);
+        }
+    }
+
+    // 검색창 다시 표시 메서드
+    private void showSearchBar() {
+        if (searchLayout != null) {
+            searchLayout.setVisibility(View.VISIBLE);
         }
     }
 
@@ -283,69 +309,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double x = Math.cos(startLat) * Math.sin(endLat) -
                 Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
         return (Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
-    }
-
-    private void displaySearchResults(String responseData) {
-        List<SearchResultItem> searchResults = new ArrayList<>();
-
-        try {
-            JSONObject jsonResponse = new JSONObject(responseData);
-            JSONArray items = jsonResponse.getJSONArray("items");
-
-            for (int i = 0; i < items.length(); i++) {
-                JSONObject item = items.getJSONObject(i);
-                String title = item.getString("title").replaceAll("<.*?>", ""); // HTML 태그 제거
-                String address = item.getString("address");
-                String roadAddress = item.getString("roadAddress");
-
-                // 아이템의 위도와 경도를 JSON에서 파싱
-                double itemLatitude = item.getDouble("latitude"); // API 응답에 맞게 수정
-                double itemLongitude = item.getDouble("longitude"); // API 응답에 맞게 수정
-
-                // 네이버 경로 API를 사용하여 거리와 예상 시간 가져오기
-                String startPoint = currentLongitude + "," + currentLatitude;
-                String targetPoint = itemLongitude + "," + itemLatitude;
-
-                directionCallRequest(startPoint, targetPoint, new Callback() {
-                    @Override
-                    public void onFailure(Call call, IOException e) {
-                        e.printStackTrace();
-                        Log.e(TAG, "경로 요청 실패: " + e.getMessage());
-                    }
-
-                    @Override
-                    public void onResponse(Call call, Response response) throws IOException {
-                        if (!response.isSuccessful()) {
-                            Log.e(TAG, "경로 응답 실패: " + response.code() + " " + response.message());
-                            return;
-                        }
-
-                        String responseData = response.body().string();
-                        Log.d(TAG, "경로 API 응답: " + responseData); // 전체 응답을 출력하여 확인
-
-                        runOnUiThread(() -> {
-                            try {
-                                JSONObject jsonResponse = new JSONObject(responseData);
-                                JSONArray routes = jsonResponse.getJSONObject("route").optJSONArray("trafast");
-                                if (routes == null || routes.length() == 0) {
-                                    Log.e(TAG, "trafast 경로가 없습니다.");
-                                    Toast.makeText(MainActivity.this, "경로 데이터가 없습니다.", Toast.LENGTH_SHORT).show();
-                                    return;
-                                }
-
-                                // 나머지 경로 설정 및 UI 업데이트 코드
-                            } catch (JSONException e) {
-                                Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
-                            }
-                        });
-                    }
-
-                });
-            }
-        } catch (JSONException e) {
-            e.printStackTrace();
-            Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
-        }
     }
 
 
@@ -703,7 +666,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
                     startPointCoords = latLng.longitude + "," + latLng.latitude;
                     currentLocation = latLng; // 현재 위치를 currentLocation에 업데이트
-                    Log.d(TAG, "주기적인 위치 업데이트 - 위도: " + latLng.longitude + ", 경도: " + latLng.latitude);
                     updateCurrentLocationMarker(latLng); // 현재 위치 마커 업데이트
 
                     // 위치 오버레이 업데이트
@@ -960,7 +922,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             case '2':
                                 runOnUiThread(() -> {
                                     // 기울기 레벨을 파싱
-                                    int tiltLevel = Integer.parseInt(content); // `content`가 "1", "2", "3"과 같은 형식일 때
+                                    int tiltLevel = Integer.parseInt(content); // content가 "1", "2", "3"과 같은 형식일 때
 
                                     // ImageView 찾기
                                     ImageView kickboardImage = findViewById(R.id.kickboardImage);
@@ -1225,10 +1187,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void showRoute() {
-        Log.d(TAG, "showRoute - startPointCoords: " + startPointCoords + ", targetPointCoords: " + targetPointCoords);
-
         if (startPointCoords.isEmpty() || targetPointCoords.isEmpty()) {
-            Log.e(TAG, "출발지 또는 목적지 좌표가 설정되지 않았습니다.");
             Toast.makeText(this, "출발지 또는 목적지 좌표가 없습니다.", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -1237,58 +1196,47 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onFailure(Call call, IOException e) {
                 e.printStackTrace();
-                Log.e(TAG, "경로 요청 실패: " + e.getMessage());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
-                    Log.e(TAG, "응답 실패: " + response.code() + " " + response.message());
                     return;
                 }
 
                 String responseData = response.body().string();
-                Log.d(TAG, "경로 API 응답: " + responseData);
                 runOnUiThread(() -> {
                     try {
                         JSONObject jsonResponse = new JSONObject(responseData);
-                        JSONArray routes = jsonResponse.getJSONObject("route").optJSONArray("trafast");
-                        if (routes == null || routes.length() == 0) {
-                            Log.e(TAG, "유효한 경로가 없습니다.");
+                        JSONArray routes = jsonResponse.getJSONObject("route").getJSONArray("trafast");
+                        if (routes.length() == 0) {
                             Toast.makeText(MainActivity.this, "경로 데이터를 가져오지 못했습니다.", Toast.LENGTH_SHORT).show();
                             return;
                         }
 
+                        // 경로 설정 코드
                         JSONObject route = routes.getJSONObject(0);
-                        double totalDistance = route.getJSONObject("summary").getDouble("distance");
-                        updateDistanceAndTime(totalDistance);
-
                         JSONArray pathData = route.getJSONArray("path");
                         List<LatLng> coords = new ArrayList<>();
                         for (int i = 0; i < pathData.length(); i++) {
                             JSONArray coord = pathData.getJSONArray(i);
-                            LatLng latLng = new LatLng(coord.getDouble(1), coord.getDouble(0));
-                            coords.add(latLng);
+                            coords.add(new LatLng(coord.getDouble(1), coord.getDouble(0)));
                         }
 
-                        Log.d(TAG, "경로 설정 완료 - 지도 업데이트");
+                        // 지도에 경로 표시
                         path.setMap(null);  // 기존 경로 제거
-                        if (!coords.isEmpty()) {
-                            path.setCoords(coords);
-                            path.setColor(Color.RED);
-                            path.setWidth(8);
-                            path.setMap(naverMap);
+                        path.setCoords(coords);
+                        path.setMap(naverMap);
 
-                            LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
-                            naverMap.moveCamera(CameraUpdate.fitBounds(bounds));
-                        } else {
-                            Log.e(TAG, "경로 데이터가 비어 있습니다.");
-                            Toast.makeText(MainActivity.this, "경로 데이터를 가져오지 못했습니다.", Toast.LENGTH_SHORT).show();
-                        }
+                        // 경로 표시 성공 시 검색창 숨기기
+                        hideSearchBar();
+                        isRouteDisplayed = true;
 
+                        // 카메라 이동
+                        LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
+                        naverMap.moveCamera(CameraUpdate.fitBounds(bounds));
                     } catch (JSONException e) {
                         e.printStackTrace();
-                        Log.e(TAG, "JSON 파싱 실패: " + e.getMessage());
                     }
                 });
             }
@@ -1455,6 +1403,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 String responseData = response.body().string();
                 Log.d(TAG, "경로 API 응답: " + responseData); // 전체 응답 확인
+
+                runOnUiThread(() -> MainActivity.this.hideSearchLayout()); // 검색창 숨기기
 
                 try {
                     // JSON 응답 파싱
