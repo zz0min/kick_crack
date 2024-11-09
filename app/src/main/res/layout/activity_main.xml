@@ -60,21 +60,6 @@
             android:padding="8dp" />
     </LinearLayout>
 
-    <!-- 옵션 표시/숨김 버튼 -->
-    <ImageButton
-        android:id="@+id/toggleButton"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_below="@id/search_bar"
-        android:layout_alignParentEnd="true"
-        android:layout_marginEnd="8dp"
-        android:layout_marginTop="8dp"
-        android:background="@android:color/transparent"
-        android:src="@android:drawable/ic_menu_more"
-        android:contentDescription="Toggle Options" />
-
-
-
     <!-- 경로 방향 버튼 -->
     <ImageButton
         android:id="@+id/routeDirectionButton"
@@ -200,41 +185,6 @@
     android:textStyle="bold"
     android:background="@drawable/green_border_background"
     android:gravity="center" />
-
-
-    <!-- 추가 정보 레이아웃 -->
-    <LinearLayout
-        android:id="@+id/additionalInfoLayout"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:layout_alignParentStart="true"
-        android:layout_marginStart="8dp"
-        android:layout_below="@id/toggleButton"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/crackDetectionTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="균열 탐지: -"
-            android:textSize="18sp" />
-
-        <TextView
-            android:id="@+id/tiltTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="기울기: -"
-            android:textSize="18sp" />
-
-        <TextView
-            android:id="@+id/impactTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="충격량: -"
-            android:textSize="18sp" />
-    </LinearLayout>
 
     <!-- 검색 결과 RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView

@@ -1,6 +1,5 @@
 package com.example.kickmapnaver;
 
-import com.example.kickmapnaver.SearchResultItem;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -29,8 +28,8 @@ import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -48,7 +47,6 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
-import com.google.android.material.snackbar.Snackbar;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -90,8 +88,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-import com.google.android.gms.tasks.OnSuccessListener;
-
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
     private static final String TAG = "BluetoothReceiver";
@@ -130,6 +126,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private final Handler handler = new Handler();
     private final int INTERVAL = 30000; // 30초 (밀리초 단위)
+    private ImageView kickboardImage;
 
     // 마커 리스트를 유지하는 변수 추가
     private List<Marker> markers = new ArrayList<>();
@@ -139,8 +136,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        additionalInfoLayout = findViewById(R.id.additionalInfoLayout);
-        ImageButton toggleButton = findViewById(R.id.toggleButton);
         alertTextView = findViewById(R.id.alertTextView);
 
         // 소리 파일 초기화
@@ -149,17 +144,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         // 사운드 및 테두리 깜박임 효과
         mediaPlayer.setOnCompletionListener(mp -> mediaPlayer.seekTo(0)); // 반복 재생 가능하게 설정
-
-        toggleButton.setOnClickListener(v -> {
-            if (isInfoVisible) {
-                additionalInfoLayout.setVisibility(View.GONE);
-                toggleButton.setImageResource(android.R.drawable.ic_menu_more);
-            } else {
-                additionalInfoLayout.setVisibility(View.VISIBLE);
-                toggleButton.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
-            }
-            isInfoVisible = !isInfoVisible;
-        });
 
         // 예상 소요 시간 TextView 참조
         estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView);
@@ -180,6 +164,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         ImageButton cancelRouteButton = findViewById(R.id.cancelRouteButton);
         cancelRouteButton.setOnClickListener(v -> cancelRoute());
 
+        // ImageView 초기화
+        kickboardImage = findViewById(R.id.kickboardImage);
+
+        // 초기화 이후 필요한 코드 작성
+        // 예를 들어, 시작 시 kickboardImage의 초기 회전 설정
+        kickboardImage.setRotation(0);
         initBluetoothUI();
         initMapUI();
         startLocationUpdates();
@@ -305,9 +295,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void initBluetoothUI() {
-        crackDetectionTextView = findViewById(R.id.crackDetectionTextView);
-        tiltTextView = findViewById(R.id.tiltTextView);
-        impactTextView = findViewById(R.id.impactTextView);
         speedTextView = findViewById(R.id.speedTextView);
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView);
@@ -849,14 +836,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         switch (message.charAt(0)) {
                             case '1':
                                 runOnUiThread(() -> {
-                                    crackDetectionTextView.setText("균열 탐지: " + content);
                                     showAlert();
                                 });
 
                                 if (currentLocation != null) {
                                     double latitude = currentLocation.latitude;
                                     double longitude = currentLocation.longitude;
-                                    int newIntensity = Integer.parseInt(content);
+                                    int newIntensity = 1;
 
                                     SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
                                     String timestamp = sdf.format(new Date());
@@ -873,7 +859,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                                 if (distance <= 5) {
                                                     // 기존 데이터가 반경 5m 내에 있음 -> 업데이트
                                                     int updatedFrequency = existingData.frequency + 1;
-                                                    int updatedIntensity = (existingData.intensity + newIntensity) / 2;
+                                                    double updatedIntensity = (existingData.intensity + newIntensity) / 2;
 
                                                     snapshot.getRef().child("frequency").setValue(updatedFrequency);
                                                     snapshot.getRef().child("intensity").setValue(updatedIntensity);
@@ -900,12 +886,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                 break;
 
                             case '2':
-                                runOnUiThread(() -> tiltTextView.setText("기울기: " + content));
+                                runOnUiThread(() -> {
+                                    // 기울기 레벨을 파싱
+                                    int tiltLevel = Integer.parseInt(content); // `content`가 "1", "2", "3"과 같은 형식일 때
+
+                                    // ImageView 찾기
+                                    ImageView kickboardImage = findViewById(R.id.kickboardImage);
+
+                                    // 기울기 레벨에 따라 위쪽으로 회전 각도 설정
+                                    float rotationAngle = 0;
+                                    if (tiltLevel == 1) {
+                                        rotationAngle = 0f;    // 레벨 1: 기울기 없음
+                                    } else if (tiltLevel == 2) {
+                                        rotationAngle = -5f;  // 레벨 2: 약간 위쪽으로 기울기
+                                    } else if (tiltLevel == 3) {
+                                        rotationAngle = -15f;  // 레벨 3: 많이 위쪽으로 기울기
+                                    }
+                                    kickboardImage.setRotation(rotationAngle);
+                                });
                                 break;
 
                             case '3':
-                                runOnUiThread(() -> impactTextView.setText("충격량: " + content));
-
                                 if (currentLocation != null) {
                                     double latitude = currentLocation.latitude;
                                     double longitude = currentLocation.longitude;
@@ -926,7 +927,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                                 if (distance <= 5) {
                                                     // 기존 데이터가 반경 5m 내에 있음 -> 업데이트
                                                     int updatedFrequency = existingData.frequency + 1;
-                                                    int updatedIntensity = (existingData.intensity + newIntensity) / 2;
+                                                    double updatedIntensity = (existingData.intensity + newIntensity) / 2;
 
                                                     snapshot.getRef().child("frequency").setValue(updatedFrequency);
                                                     snapshot.getRef().child("intensity").setValue(updatedIntensity);
@@ -953,7 +954,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                 break;
 
                             case '4':
-                                runOnUiThread(() -> speedTextView.setText("속도: " + content));
+                                runOnUiThread(() -> speedTextView.setText(content +" km/h" ));
                                 break;
 
                             default:
@@ -1016,11 +1017,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         public int intensity;
         public String timestamp;
 
-        // 기본 생성자 (필수)
+        // 기본 생성자 (Firebase 역직렬화용, 매개변수 없음)
         public LocationData() {
-            // Firebase가 객체를 역직렬화할 때 필요
+            // 빈 생성자는 Firebase가 객체를 역직렬화할 때 필요합니다.
         }
 
+        // 매개변수가 있는 생성자
         public LocationData(double latitude, double longitude, int frequency, int intensity, String timestamp) {
             this.latitude = latitude;
             this.longitude = longitude;
@@ -1029,6 +1031,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             this.timestamp = timestamp;
         }
     }
+
 
     // 알림과 테두리 깜박임 효과
     private void showAlert() {
