@@ -14,6 +14,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- 경고 알림 -->
     <TextView
         android:id="@+id/alertTextView"
         android:layout_width="wrap_content"
@@ -76,7 +77,6 @@
         android:padding="8dp" />
 
     <!-- 경로 취소 ImageButton -->
-
     <ImageButton
         android:id="@+id/cancelRouteButton"
         android:layout_width="48dp"
@@ -89,20 +89,6 @@
         android:contentDescription="경로 취소"
         android:padding="8dp"
         android:src="@drawable/cancel" />
-
-    <TextView
-        android:id="@+id/cancelMessageTextView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="경로가 취소되었습니다."
-        android:textSize="18sp"
-        android:textColor="@android:color/black"
-        android:background="@android:color/white"
-        android:padding="8dp"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="16dp"
-        android:visibility="gone" />
-
 
     <!-- Connect, Disconnect 버튼을 포함하는 LinearLayout -->
     <LinearLayout
@@ -132,10 +118,9 @@
             android:background="@android:color/transparent"
             android:contentDescription="Disconnect"
             android:padding="8dp" />
-
     </LinearLayout>
 
-    <!-- CardView로 이미지와 속도를 감싸는 컨테이너 -->
+    <!-- 속도, 거리 및 예상 소요 시간을 표시하는 CardView -->
     <androidx.cardview.widget.CardView
         android:id="@+id/speedCard"
         android:layout_width="wrap_content"
@@ -150,49 +135,61 @@
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
+            android:orientation="vertical"
             android:padding="8dp"
             android:background="@drawable/green_border_background">
 
+            <!-- 킥보드 이미지 -->
             <ImageView
                 android:id="@+id/kickboardImage"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:src="@drawable/kickboard2"
-                android:layout_marginEnd="40dp" />
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="8dp" />
 
+            <!-- 속도 표시 -->
             <TextView
                 android:id="@+id/speedTextView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="0 km/h"
                 android:textSize="36sp"
-                android:textColor="#000" />
+                android:textColor="#000"
+                android:gravity="center"
+                android:layout_gravity="center_horizontal" />
+
+            <!-- 거리 표시 -->
+            <TextView
+                android:id="@+id/distanceTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="거리: 0 km"
+                android:textSize="16sp"
+                android:textColor="#000"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="8dp" />
+
+            <!-- 예상 소요 시간 표시 -->
+            <TextView
+                android:id="@+id/estimatedTimeTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="예상 소요 시간: 0분"
+                android:textSize="16sp"
+                android:textColor="#000"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="4dp" />
+
         </LinearLayout>
     </androidx.cardview.widget.CardView>
-
-
-    <!-- 예상 소요 시간 TextView -->
-    <TextView
-    android:id="@+id/estimatedTimeTextView"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_below="@id/speedCard"
-    android:layout_marginTop="8dp"
-    android:layout_marginStart="16dp"
-    android:padding="8dp"
-    android:text="예상 소요 시간: 0분"
-    android:textSize="16sp"
-    android:textStyle="bold"
-    android:background="@drawable/green_border_background"
-    android:gravity="center" />
 
     <!-- 검색 결과 RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/search_bar"/>
+        android:layout_below="@id/search_bar"
+        android:visibility="gone" />
 
 </RelativeLayout>

@@ -90,6 +90,7 @@ import okhttp3.Response;
 
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
+    private TextView distanceTextView;
     private static final String TAG = "BluetoothReceiver";
     private static final String DEVICE_ADDRESS = "D8:3A:DD:1E:54:69";
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
@@ -142,6 +143,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // 각 요소 초기화
+        alertTextView = findViewById(R.id.alertTextView);
+        estimatedTimeTextView = findViewById(R.id.estimatedTimeTextView); // 예상 소요 시간 TextView
+        distanceTextView = findViewById(R.id.distanceTextView); // 거리 TextView
+        speedTextView = findViewById(R.id.speedTextView); // 속도 TextView
 
         alertTextView = findViewById(R.id.alertTextView);
 
@@ -279,7 +286,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void displaySearchResults(String responseData) {
-        List<SearchResultItem> searchResults = new ArrayList<>(); // MainActivity.SearchResultItem 대신 SearchResultItem 사용
+        List<SearchResultItem> searchResults = new ArrayList<>();
 
         try {
             JSONObject jsonResponse = new JSONObject(responseData);
@@ -291,18 +298,56 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 String address = item.getString("address");
                 String roadAddress = item.getString("roadAddress");
 
-                searchResults.add(new SearchResultItem(title, address, roadAddress));
+                // 아이템의 위도와 경도를 JSON에서 파싱
+                double itemLatitude = item.getDouble("latitude"); // API 응답에 맞게 수정
+                double itemLongitude = item.getDouble("longitude"); // API 응답에 맞게 수정
+
+                // 네이버 경로 API를 사용하여 거리와 예상 시간 가져오기
+                String startPoint = currentLongitude + "," + currentLatitude;
+                String targetPoint = itemLongitude + "," + itemLatitude;
+
+                directionCallRequest(startPoint, targetPoint, new Callback() {
+                    @Override
+                    public void onFailure(Call call, IOException e) {
+                        e.printStackTrace();
+                        Log.e(TAG, "경로 요청 실패: " + e.getMessage());
+                    }
+
+                    @Override
+                    public void onResponse(Call call, Response response) throws IOException {
+                        if (!response.isSuccessful()) {
+                            Log.e(TAG, "경로 응답 실패: " + response.code() + " " + response.message());
+                            return;
+                        }
+
+                        String responseData = response.body().string();
+                        Log.d(TAG, "경로 API 응답: " + responseData); // 전체 응답을 출력하여 확인
+
+                        runOnUiThread(() -> {
+                            try {
+                                JSONObject jsonResponse = new JSONObject(responseData);
+                                JSONArray routes = jsonResponse.getJSONObject("route").optJSONArray("trafast");
+                                if (routes == null || routes.length() == 0) {
+                                    Log.e(TAG, "trafast 경로가 없습니다.");
+                                    Toast.makeText(MainActivity.this, "경로 데이터가 없습니다.", Toast.LENGTH_SHORT).show();
+                                    return;
+                                }
+
+                                // 나머지 경로 설정 및 UI 업데이트 코드
+                            } catch (JSONException e) {
+                                Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
+                            }
+                        });
+                    }
+
+                });
             }
         } catch (JSONException e) {
             e.printStackTrace();
             Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
         }
-
-        RecyclerView recyclerView = findViewById(R.id.recycler_view); // ID 확인
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        SearchResultAdapter adapter = new SearchResultAdapter(searchResults);
-        recyclerView.setAdapter(adapter);
     }
+
 
     private void initBluetoothUI() {
         speedTextView = findViewById(R.id.speedTextView);
@@ -1181,6 +1226,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void showRoute() {
         Log.d(TAG, "showRoute - startPointCoords: " + startPointCoords + ", targetPointCoords: " + targetPointCoords);
+
+        if (startPointCoords.isEmpty() || targetPointCoords.isEmpty()) {
+            Log.e(TAG, "출발지 또는 목적지 좌표가 설정되지 않았습니다.");
+            Toast.makeText(this, "출발지 또는 목적지 좌표가 없습니다.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         directionCallRequest(startPointCoords, targetPointCoords, new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -1192,48 +1244,48 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void onResponse(Call call, Response response) throws IOException {
                 if (!response.isSuccessful()) {
                     Log.e(TAG, "응답 실패: " + response.code() + " " + response.message());
-                    Log.e(TAG, "응답 본문: " + response.body().string());
                     return;
                 }
 
                 String responseData = response.body().string();
+                Log.d(TAG, "경로 API 응답: " + responseData);
                 runOnUiThread(() -> {
                     try {
                         JSONObject jsonResponse = new JSONObject(responseData);
-                        JSONArray route = jsonResponse.getJSONObject("route").getJSONArray("trafast");
-                        JSONArray pathData = route.getJSONObject(0).getJSONArray("path");
+                        JSONArray routes = jsonResponse.getJSONObject("route").optJSONArray("trafast");
+                        if (routes == null || routes.length() == 0) {
+                            Log.e(TAG, "유효한 경로가 없습니다.");
+                            Toast.makeText(MainActivity.this, "경로 데이터를 가져오지 못했습니다.", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
 
-                        checkNearbyFirebaseData(pathData, 3.0, nearbyLocations);
+                        JSONObject route = routes.getJSONObject(0);
+                        double totalDistance = route.getJSONObject("summary").getDouble("distance");
+                        updateDistanceAndTime(totalDistance);
+
+                        JSONArray pathData = route.getJSONArray("path");
                         List<LatLng> coords = new ArrayList<>();
-                        totalDistanceInMeters = 0.0;
-
                         for (int i = 0; i < pathData.length(); i++) {
                             JSONArray coord = pathData.getJSONArray(i);
                             LatLng latLng = new LatLng(coord.getDouble(1), coord.getDouble(0));
                             coords.add(latLng);
-
-                            if (i > 0) {
-                                totalDistanceInMeters += calculateDistance(coords.get(i - 1), latLng);
-                            }
                         }
 
-                        path.setCoords(coords);
-                        path.setColor(0xFFFF0000);
-                        path.setWidth(10);
-                        path.setMap(naverMap);
-                        Log.d(TAG, "경로 설정 완료: " + coords.toString());
+                        Log.d(TAG, "경로 설정 완료 - 지도 업데이트");
+                        path.setMap(null);  // 기존 경로 제거
+                        if (!coords.isEmpty()) {
+                            path.setCoords(coords);
+                            path.setColor(Color.RED);
+                            path.setWidth(8);
+                            path.setMap(naverMap);
 
-                        if (!coords.isEmpty() && !isRouteDisplayed) {
                             LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
-                            isCameraUpdating = true;
-                            isRouteDisplayed = true;
-                            naverMap.moveCamera(CameraUpdate.fitBounds(bounds).finishCallback(() -> isCameraUpdating = false));
+                            naverMap.moveCamera(CameraUpdate.fitBounds(bounds));
+                        } else {
+                            Log.e(TAG, "경로 데이터가 비어 있습니다.");
+                            Toast.makeText(MainActivity.this, "경로 데이터를 가져오지 못했습니다.", Toast.LENGTH_SHORT).show();
                         }
 
-                        // 예상 소요 시간 업데이트
-                        double averageSpeedKmh = 50.0; // 예시로 평균 속도 50km/h 사용 (필요에 따라 조정 가능)
-                        updateEstimatedTime(averageSpeedKmh);
-                        startProximityCheck();
                     } catch (JSONException e) {
                         e.printStackTrace();
                         Log.e(TAG, "JSON 파싱 실패: " + e.getMessage());
@@ -1242,6 +1294,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         });
     }
+
+
+
+
 
     public void checkNearbyFirebaseData(JSONArray pathData, double radiusMeters, List<LocationData> nearbyLocations) {
         nearbyLocations.clear();
@@ -1335,13 +1391,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             }
         }
     }
+
+    private void updateEstimatedTimeWithDistance(double distanceMeters) {
+        double averageSpeedKmh = 15.0; // 평균 이동 속도를 15km/h로 가정
+        if (distanceMeters > 0) {
+            double timeInHours = (distanceMeters / 1000) / averageSpeedKmh;
+            int minutes = (int) (timeInHours * 60);
+            runOnUiThread(() -> estimatedTimeTextView.setText("예상 소요 시간: " + minutes + "분"));
+        } else {
+            runOnUiThread(() -> estimatedTimeTextView.setText("예상 소요 시간: 계산 불가"));
+        }
+    }
+
+    // LatLng 객체를 사용하는 오버로딩된 메서드
     private double calculateDistance(LatLng start, LatLng end) {
-        double earthRadius = 6371000;
-        double dLat = Math.toRadians(end.latitude - start.latitude);
-        double dLng = Math.toRadians(end.longitude - start.longitude);
+        return calculateDistance(start.latitude, start.longitude, end.latitude, end.longitude);
+    }
+
+    // 기존의 double 타입 위도와 경도를 사용하는 메서드
+    private double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+        double earthRadius = 6371000; // 지구 반경 (미터)
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
         double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(Math.toRadians(start.latitude)) * Math.cos(Math.toRadians(end.latitude)) *
-                        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
         double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return earthRadius * c;
     }
@@ -1366,8 +1440,83 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .build();
 
         Log.d(TAG, "directionCallRequest - URL: " + url);
-        client.newCall(request).enqueue(callback);
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                Log.e(TAG, "경로 요청 실패: " + e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    Log.e(TAG, "경로 응답 실패: " + response.code() + " " + response.message());
+                    return;
+                }
+
+                String responseData = response.body().string();
+                Log.d(TAG, "경로 API 응답: " + responseData); // 전체 응답 확인
+
+                try {
+                    // JSON 응답 파싱
+                    JSONObject jsonResponse = new JSONObject(responseData);
+                    JSONArray routes = jsonResponse.getJSONObject("route").optJSONArray("trafast");
+
+                    // trafast 경로 데이터가 없을 경우 예외 처리
+                    if (routes == null || routes.length() == 0) {
+                        Log.e(TAG, "trafast 경로가 없습니다.");
+                        runOnUiThread(() ->
+                                Toast.makeText(MainActivity.this, "경로 데이터가 없습니다.", Toast.LENGTH_SHORT).show()
+                        );
+                        return;
+                    }
+
+                    JSONObject route = routes.getJSONObject(0); // 최단 경로 선택
+                    JSONObject summary = route.getJSONObject("summary");
+
+                    // 거리 및 예상 시간 추출 (미터 및 초 단위)
+                    double totalDistance = summary.getDouble("distance"); // 미터 단위
+                    int estimatedTimeSec = summary.getInt("duration"); // 초 단위
+                    int estimatedTimeMin = estimatedTimeSec / 60;
+
+                    // UI 업데이트
+                    runOnUiThread(() -> updateDistanceAndTime(totalDistance));
+
+                    // 경로 데이터 설정 및 지도에 경로 표시
+                    JSONArray pathData = route.getJSONArray("path");
+                    List<LatLng> coords = new ArrayList<>();
+                    for (int i = 0; i < pathData.length(); i++) {
+                        JSONArray coord = pathData.getJSONArray(i);
+                        LatLng latLng = new LatLng(coord.getDouble(1), coord.getDouble(0));
+                        coords.add(latLng);
+                    }
+
+                    // PathOverlay 설정
+                    runOnUiThread(() -> {
+                        path.setCoords(coords);
+                        path.setColor(0xFFFF0000); // 빨간색 경로
+                        path.setWidth(10);
+                        path.setMap(naverMap);
+
+                        // 경로를 따라 카메라 위치 설정
+                        if (!coords.isEmpty()) {
+                            LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
+                            naverMap.moveCamera(CameraUpdate.fitBounds(bounds));
+                        }
+                    });
+
+                } catch (JSONException e) {
+                    Log.e(TAG, "JSON 파싱 오류: " + e.getMessage());
+                }
+            }
+
+        });
     }
+
+    private void updateDistanceAndTime(double totalDistance) {
+        distanceTextView.setText("거리: " + String.format("%.2f km", totalDistance / 1000));
+        estimatedTimeTextView.setText("예상 소요 시간: " + (int) totalDistance / 4 / 60 + "분");
+    }
+
 
     @Override
     protected void onDestroy() {

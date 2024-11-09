@@ -60,7 +60,7 @@ public class SearchResultsActivity extends AppCompatActivity {
                 JSONObject item = items.getJSONObject(i);
                 String title = item.optString("title", "이름 없음").replaceAll("<.*?>", ""); // HTML 태그 제거
                 String roadAddress = item.optString("roadAddress", "주소 없음");
-                placeList.add(new SearchResultItem(title, "", roadAddress)); // address는 빈 문자열로 설정
+                placeList.add(new SearchResultItem(title, "", roadAddress, 0, 0)); // distance와 estimatedTime을 0으로 설정
             }
             placeAdapter.notifyDataSetChanged();
         } catch (JSONException e) {
