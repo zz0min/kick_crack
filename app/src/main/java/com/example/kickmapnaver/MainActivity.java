@@ -133,8 +133,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // 근처에 있는 위치들을 저장할 리스트 생성
     private List<LocationData> nearbyLocations = new ArrayList<>();
 
-    private static final double WARNING_RADIUS_METERS = 3.0; // 경고 반경 설정 (3m)
-    private static final int CHECK_INTERVAL_MS = 2000; // 확인 주기 설정 (2초)
+    private static final double WARNING_RADIUS_METERS = 10.0; // 경고 반경 설정 (10m)
+    private static final int CHECK_INTERVAL_MS = 5000; // 확인 주기 설정 (2초)
     private Handler proximityCheckHandler = new Handler();
 
 
@@ -191,6 +191,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             isRouteDisplayed = false; // 경로 표시 상태를 초기화
             Log.d(TAG, "경로안내가 취소되었습니다.");
 
+
             // 사용자에게 경로가 취소되었음을 알리는 UI 메시지
             runOnUiThread(() -> {
                 // 메시지 표시를 위한 TextView 생성
@@ -217,6 +218,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 // 일정 시간 후 메시지를 제거
                 new Handler().postDelayed(() -> rootLayout.removeView(messageTextView), 2000); // 2초 후 제거
+                estimatedTimeTextView.setText("예상 소요 시간: 0분");
+                stopProximityCheck();
             });
         }
     }
@@ -861,9 +864,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                         switch (message.charAt(0)) {
                             case '1':
-                                runOnUiThread(() -> {
-                                    showAlert();
-                                });
+                                runOnUiThread(MainActivity.this::showAlert);
 
                                 if (currentLocation != null) {
                                     double latitude = currentLocation.latitude;
@@ -1202,7 +1203,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         JSONArray route = jsonResponse.getJSONObject("route").getJSONArray("trafast");
                         JSONArray pathData = route.getJSONObject(0).getJSONArray("path");
 
-                        checkNearbyFirebaseData(pathData, 3, nearbyLocations);
+                        checkNearbyFirebaseData(pathData, 3.0, nearbyLocations);
                         List<LatLng> coords = new ArrayList<>();
                         totalDistanceInMeters = 0.0;
 
@@ -1232,7 +1233,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         // 예상 소요 시간 업데이트
                         double averageSpeedKmh = 50.0; // 예시로 평균 속도 50km/h 사용 (필요에 따라 조정 가능)
                         updateEstimatedTime(averageSpeedKmh);
-
+                        startProximityCheck();
                     } catch (JSONException e) {
                         e.printStackTrace();
                         Log.e(TAG, "JSON 파싱 실패: " + e.getMessage());
@@ -1248,7 +1249,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         DatabaseReference locationRef = database.getReference("locations");
 
         // 중간 좌표들을 포함한 전체 경로 좌표 리스트 생성
-        List<LatLng> interpolatedPath = interpolatePath(pathData, 3); // 3미터 간격으로 중간 지점을 생성
+        List<LatLng> interpolatedPath = interpolatePath(pathData, 3.0); // 3미터 간격으로 중간 지점을 생성
 
         locationRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
@@ -1268,6 +1269,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 // 모든 데이터가 검색된 후에 리스트 출력
                 Log.d("NearbyLocations", "총 발견된 근처 위치 개수: " + nearbyLocations.size());
+                checkProximityAndShowAlert(currentLocation, nearbyLocations);
             }
 
             @Override
@@ -1317,13 +1319,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     public void checkProximityAndShowAlert(LatLng currentLocation, List<LocationData> nearbyLocations) {
+        Log.d("MethodCheck", "checkProximityAndShowAlert 메서드가 호출되었습니다.");
+        Log.d("ListSizeCheck", "nearbyLocations 리스트의 크기: " + nearbyLocations.size());
         for (LocationData locationData : nearbyLocations) {
+            Log.d("MethodCheck2", "checkProximityAndShowAlert 메서드가 반복문 호출되었습니다.");
             LatLng nearbyLocation = new LatLng(locationData.latitude, locationData.longitude);
             double distance = calculateDistance(currentLocation, nearbyLocation);
 
-            if (distance <= 10) {
+            if (distance <= WARNING_RADIUS_METERS) {
                 showAlert();
                 Log.d("ProximityAlert", "근처에 균열 경고 위치 발견: " + nearbyLocation.toString());
+            }
+            else{
+                Log.d("ProximityAlert", "근처에 균열 경고 위치 없음");
             }
         }
     }
