@@ -2,6 +2,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_layout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".MainActivity">
@@ -88,6 +89,33 @@
         android:contentDescription="내비게이션 모드"
         android:padding="8dp" />
 
+    <!-- 경로 취소 ImageButton -->
+    <ImageButton
+        android:id="@+id/cancelRouteButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentBottom="true"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="340dp"
+        android:src="@drawable/cancel"
+        android:background="@android:color/transparent"
+        android:contentDescription="경로 취소"
+        android:padding="8dp" />
+
+    <TextView
+        android:id="@+id/cancelMessageTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="경로가 취소되었습니다."
+        android:textSize="18sp"
+        android:textColor="@android:color/black"
+        android:background="@android:color/white"
+        android:padding="8dp"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="16dp"
+        android:visibility="gone" />
+
 
     <!-- Connect, Disconnect 버튼을 포함하는 LinearLayout -->
     <LinearLayout
@@ -98,7 +126,6 @@
         android:layout_alignParentBottom="true"
         android:layout_margin="16dp"
         android:gravity="center">
-
 
         <ImageButton
             android:id="@+id/connectbutton"

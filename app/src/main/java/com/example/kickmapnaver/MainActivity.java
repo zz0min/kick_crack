@@ -22,14 +22,17 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.graphics.Path;
@@ -45,6 +48,7 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
+import com.google.android.material.snackbar.Snackbar;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
@@ -172,6 +176,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         connectButton.setOnClickListener(v -> connectBluetooth());
         disconnectButton.setOnClickListener(v -> disconnectBluetooth());
 
+        // 경로 취소 버튼 설정
+        ImageButton cancelRouteButton = findViewById(R.id.cancelRouteButton);
+        cancelRouteButton.setOnClickListener(v -> cancelRoute());
+
         initBluetoothUI();
         initMapUI();
         startLocationUpdates();
@@ -179,6 +187,43 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // 주기적으로 마커를 불러오는 작업 시작
         startLoadingMarkersPeriodically();
     }
+
+    private void cancelRoute() {
+        if (path != null) {
+            path.setMap(null); // 경로를 지도에서 제거
+            isRouteDisplayed = false; // 경로 표시 상태를 초기화
+            Log.d(TAG, "경로가 취소되었습니다.");
+
+            // 사용자에게 경로가 취소되었음을 알리는 UI 메시지
+            runOnUiThread(() -> {
+                // 메시지 표시를 위한 TextView 생성
+                TextView messageTextView = new TextView(this);
+                messageTextView.setText("경로안내가 취소되었습니다.");
+                messageTextView.setTextSize(18);
+                messageTextView.setTextColor(Color.BLACK); // 검은색 글자
+                messageTextView.setBackgroundColor(Color.WHITE); // 하얀 배경
+                messageTextView.setPadding(20, 20, 20, 20);
+                messageTextView.setGravity(Gravity.CENTER);
+                messageTextView.setBackgroundResource(R.drawable.red_border_background); // 빨간색 테두리 적용
+
+                // 레이아웃 파라미터 설정 (화면 중앙에 위치)
+                RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(
+                        RelativeLayout.LayoutParams.WRAP_CONTENT,
+                        RelativeLayout.LayoutParams.WRAP_CONTENT
+                );
+                layoutParams.addRule(RelativeLayout.CENTER_IN_PARENT);
+                messageTextView.setLayoutParams(layoutParams);
+
+                // 메시지를 추가할 루트 레이아웃 찾기
+                RelativeLayout rootLayout = findViewById(R.id.root_layout);
+                rootLayout.addView(messageTextView);
+
+                // 일정 시간 후 메시지를 제거
+                new Handler().postDelayed(() -> rootLayout.removeView(messageTextView), 2000); // 2초 후 제거
+            });
+        }
+    }
+
 
     private void connectBluetooth() {
         // Bluetooth 연결을 처리하는 로직을 여기에 추가하세요
@@ -408,37 +453,42 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(@NonNull NaverMap map) {
         naverMap = map;
-        requestLocationPermissions(); // 위치 권한 요청 추가
-        startLocationUpdates(); // 위치 업데이트 시작
+        requestLocationPermissions(); // 위치 권한 요청
+        startLocationUpdates(); // 위치 업데이트 시작 (권한이 있을 경우)
 
         // UI 설정
         UiSettings uiSettings = naverMap.getUiSettings();
-        uiSettings.setCompassEnabled(true);
-        uiSettings.setScaleBarEnabled(true);
-        uiSettings.setZoomControlEnabled(true);
-        uiSettings.setLocationButtonEnabled(true);
+        uiSettings.setCompassEnabled(true); // 나침반 표시 활성화
+        uiSettings.setScaleBarEnabled(true); // 축척 막대 활성화
+        uiSettings.setZoomControlEnabled(true); // 줌 컨트롤 활성화
+        uiSettings.setLocationButtonEnabled(true); // 현재 위치 버튼 활성화
 
-        // 위치 소스 설정
-        naverMap.setLocationSource(locationSource);
-        naverMap.setLocationTrackingMode(LocationTrackingMode.Follow);
+        // 위치 소스와 위치 추적 모드 설정
+        if (locationSource != null) {
+            naverMap.setLocationSource(locationSource); // 위치 소스 설정
+            naverMap.setLocationTrackingMode(LocationTrackingMode.Follow); // 사용자 위치를 따라 이동
+        } else {
+            Log.e(TAG, "locationSource가 null입니다. 올바르게 초기화되었는지 확인하세요.");
+        }
 
         // 위치 오버레이 설정
         LocationOverlay locationOverlay = naverMap.getLocationOverlay();
         locationOverlay.setVisible(true); // 위치 오버레이 표시
-        locationOverlay.setZIndex(1); // Z-Index 설정하여 다른 레이어 위에 표시
+        locationOverlay.setZIndex(1); // Z-Index 설정 (다른 레이어보다 위에 표시)
 
-        //오래된 데이터 삭제 후 Firebase에서 데이터 불러와 마커 그리기
+        // Firebase에서 데이터를 불러와 마커를 표시 (오래된 데이터 제거 후)
         removeOldDataAndLoadMarkers();
 
-        // 카메라 위치 업데이트
-        naverMap.moveCamera(CameraUpdate.scrollTo(new LatLng(34.81233, 126.43940))); // 초기 카메라 위치 설정
-
+        // 초기 카메라 위치 설정
+        LatLng initialPosition = new LatLng(34.81233, 126.43940);
+        naverMap.moveCamera(CameraUpdate.scrollTo(initialPosition));
 
         // 카메라 이동 상태 체크
         naverMap.addOnCameraIdleListener(() -> {
-            if (!isCameraUpdating) {
-                if (!isRouteDisplayed) {
-                    startPointCoords = naverMap.getCameraPosition().target.longitude + "," + naverMap.getCameraPosition().target.latitude;
+            if (!isCameraUpdating) { // 카메라가 수동으로 움직이고 있을 때
+                if (!isRouteDisplayed) { // 경로가 표시되지 않은 경우에만
+                    CameraPosition cameraPosition = naverMap.getCameraPosition();
+                    startPointCoords = cameraPosition.target.longitude + "," + cameraPosition.target.latitude;
                     Log.d(TAG, "startPointCoords: " + startPointCoords);
                 }
             }
@@ -447,7 +497,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // 지도 클릭 리스너 설정
         naverMap.setOnMapClickListener((point, coord) -> {
             Log.d(TAG, "지도 클릭: " + coord.latitude + ", " + coord.longitude);
-            getPlaceInfo(coord.latitude, coord.longitude);
+            getPlaceInfo(coord.latitude, coord.longitude); // 클릭한 위치에 대한 정보 가져오기
         });
     }
 
