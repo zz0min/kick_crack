@@ -130,6 +130,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // 마커 리스트를 유지하는 변수 추가
     private List<Marker> markers = new ArrayList<>();
+    // 근처에 있는 위치들을 저장할 리스트 생성
+    private List<LocationData> nearbyLocations = new ArrayList<>();
+
+    private static final double WARNING_RADIUS_METERS = 3.0; // 경고 반경 설정 (3m)
+    private static final int CHECK_INTERVAL_MS = 2000; // 확인 주기 설정 (2초)
+    private Handler proximityCheckHandler = new Handler();
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -521,6 +528,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // 주기적 실행 중단 메소드
     private void stopLoadingMarkersPeriodically() {
         handler.removeCallbacks(loadMarkersRunnable);
+    }
+
+    // 근처 위치 확인을 주기적으로 수행
+    private final Runnable proximityCheckRunnable = new Runnable() {
+        @Override
+        public void run() {
+            checkProximityAndShowAlert(currentLocation, nearbyLocations);
+            proximityCheckHandler.postDelayed(this, CHECK_INTERVAL_MS);
+        }
+    };
+
+    // 초기화 시 호출하여 주기적 실행 시작
+    private void startProximityCheck() {
+        proximityCheckHandler.post(proximityCheckRunnable);
+    }
+
+    // 화면이 닫힐 때 호출하여 주기적 실행 중단
+    private void stopProximityCheck() {
+        proximityCheckHandler.removeCallbacks(proximityCheckRunnable);
     }
 
     private void loadWarningMarkersFromFirebase() {
@@ -1176,6 +1202,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         JSONArray route = jsonResponse.getJSONObject("route").getJSONArray("trafast");
                         JSONArray pathData = route.getJSONObject(0).getJSONArray("path");
 
+                        checkNearbyFirebaseData(pathData, 3, nearbyLocations);
                         List<LatLng> coords = new ArrayList<>();
                         totalDistanceInMeters = 0.0;
 
@@ -1215,6 +1242,91 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
+    public void checkNearbyFirebaseData(JSONArray pathData, double radiusMeters, List<LocationData> nearbyLocations) {
+        nearbyLocations.clear();
+        FirebaseDatabase database = FirebaseDatabase.getInstance();
+        DatabaseReference locationRef = database.getReference("locations");
+
+        // 중간 좌표들을 포함한 전체 경로 좌표 리스트 생성
+        List<LatLng> interpolatedPath = interpolatePath(pathData, 3); // 3미터 간격으로 중간 지점을 생성
+
+        locationRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot dataSnapshot) {
+                for (DataSnapshot snapshot : dataSnapshot.getChildren()) {
+                    LocationData locationData = snapshot.getValue(LocationData.class);
+                    if (locationData != null) {
+                        LatLng firebaseLocation = new LatLng(locationData.latitude, locationData.longitude);
+
+                        // 전체 경로의 각 지점과 Firebase 데이터 위치를 비교
+                        if (isLocationNearPath(interpolatedPath, firebaseLocation, radiusMeters)) {
+                            nearbyLocations.add(locationData); // 근처 위치 추가
+                            Log.d("NearbyLocation", "경로 근처에 Firebase 데이터 발견: " + firebaseLocation.toString());
+                        }
+                    }
+                }
+
+                // 모든 데이터가 검색된 후에 리스트 출력
+                Log.d("NearbyLocations", "총 발견된 근처 위치 개수: " + nearbyLocations.size());
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError databaseError) {
+                Log.e(TAG, "Firebase 데이터 읽기 실패: " + databaseError.getMessage());
+            }
+        });
+    }
+
+    // 경로 중간 좌표 보간 메서드
+    private List<LatLng> interpolatePath(JSONArray pathData, double intervalMeters) {
+        List<LatLng> interpolatedPoints = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < pathData.length() - 1; i++) {
+                JSONArray startCoord = pathData.getJSONArray(i);
+                JSONArray endCoord = pathData.getJSONArray(i + 1);
+
+                LatLng start = new LatLng(startCoord.getDouble(1), startCoord.getDouble(0));
+                LatLng end = new LatLng(endCoord.getDouble(1), endCoord.getDouble(0));
+
+                double distance = calculateDistance(start, end); // 두 지점 사이 거리 계산
+                int numPoints = (int) (distance / intervalMeters);
+
+                for (int j = 0; j <= numPoints; j++) {
+                    double fraction = j / (double) numPoints;
+                    double lat = start.latitude + fraction * (end.latitude - start.latitude);
+                    double lng = start.longitude + fraction * (end.longitude - start.longitude);
+                    interpolatedPoints.add(new LatLng(lat, lng));
+                }
+            }
+        } catch (Exception e) {
+            Log.e("InterpolatePath", "오류: " + e.getMessage());
+        }
+
+        return interpolatedPoints;
+    }
+
+    // Firebase 위치와 경로 근처 여부 확인
+    private boolean isLocationNearPath(List<LatLng> path, LatLng location, double radiusMeters) {
+        for (LatLng point : path) {
+            if (calculateDistance(point, location) <= radiusMeters) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void checkProximityAndShowAlert(LatLng currentLocation, List<LocationData> nearbyLocations) {
+        for (LocationData locationData : nearbyLocations) {
+            LatLng nearbyLocation = new LatLng(locationData.latitude, locationData.longitude);
+            double distance = calculateDistance(currentLocation, nearbyLocation);
+
+            if (distance <= 10) {
+                showAlert();
+                Log.d("ProximityAlert", "근처에 균열 경고 위치 발견: " + nearbyLocation.toString());
+            }
+        }
+    }
     private double calculateDistance(LatLng start, LatLng end) {
         double earthRadius = 6371000;
         double dLat = Math.toRadians(end.latitude - start.latitude);
