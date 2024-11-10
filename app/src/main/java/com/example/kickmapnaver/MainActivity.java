@@ -507,7 +507,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    private void drawWarningMarker(LatLng location, String description) {
+    private void drawWarningMarker(LatLng location) {
         Marker warningMarker = new Marker();
         warningMarker.setPosition(location);
 
@@ -521,7 +521,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         warningMarker.setIcon(OverlayImage.fromBitmap(resizedBitmap));
 
         warningMarker.setMap(naverMap); // 마커를 지도에 추가
-        warningMarker.setCaptionText(description); // 설명 추가
     }
 
     private final Runnable loadMarkersRunnable = new Runnable() {
@@ -578,12 +577,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     LocationData locationData = snapshot.getValue(LocationData.class);
                     if (locationData != null) {
                         LatLng location = new LatLng(locationData.latitude, locationData.longitude);
-                        String description = "Frequency: " + locationData.frequency +
-                                ", Intensity: " + locationData.intensity +
-                                ", Timestamp: " + locationData.timestamp;
-
-                        // drawWarningMarker 메소드를 사용해 마커 그리기
-                        drawWarningMarker(location, description);
+                        drawWarningMarker(location);
                     }
                 }
                 Log.d(TAG, "Firebase 데이터로 마커 추가 완료");
