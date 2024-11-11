@@ -1212,6 +1212,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         // 경로 설정 코드
                         JSONObject route = routes.getJSONObject(0);
                         JSONArray pathData = route.getJSONArray("path");
+                        checkNearbyFirebaseData(pathData, WARNING_RADIUS_METERS, nearbyLocations);
                         List<LatLng> coords = new ArrayList<>();
                         for (int i = 0; i < pathData.length(); i++) {
                             JSONArray coord = pathData.getJSONArray(i);
