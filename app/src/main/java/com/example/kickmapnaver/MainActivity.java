@@ -885,7 +885,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                             LocationData existingData = snapshot.getValue(LocationData.class);
                                             if (existingData != null) {
                                                 double distance = calculateDistance(latitude, longitude, existingData.latitude, existingData.longitude);
-                                                if (distance <= 5) {
+                                                if (distance <= 10) {
                                                     // 기존 데이터가 반경 5m 내에 있음 -> 업데이트
                                                     int updatedFrequency = existingData.frequency + 1;
                                                     double updatedIntensity = (existingData.intensity + newIntensity) / 2;
@@ -953,7 +953,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                             LocationData existingData = snapshot.getValue(LocationData.class);
                                             if (existingData != null) {
                                                 double distance = calculateDistance(latitude, longitude, existingData.latitude, existingData.longitude);
-                                                if (distance <= 5) {
+                                                if (distance <= 20) {
                                                     // 기존 데이터가 반경 5m 내에 있음 -> 업데이트
                                                     int updatedFrequency = existingData.frequency + 1;
                                                     double updatedIntensity = (existingData.intensity + newIntensity) / 2;
@@ -1212,7 +1212,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         // 경로 설정 코드
                         JSONObject route = routes.getJSONObject(0);
                         JSONArray pathData = route.getJSONArray("path");
-                        checkNearbyFirebaseData(pathData, WARNING_RADIUS_METERS, nearbyLocations);
+                        checkNearbyFirebaseData(pathData, 5.0, nearbyLocations);
                         List<LatLng> coords = new ArrayList<>();
                         for (int i = 0; i < pathData.length(); i++) {
                             JSONArray coord = pathData.getJSONArray(i);
@@ -1231,6 +1231,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         // 카메라 이동
                         LatLngBounds bounds = new LatLngBounds.Builder().include(coords).build();
                         naverMap.moveCamera(CameraUpdate.fitBounds(bounds));
+                        startProximityCheck();
                     } catch (JSONException e) {
                         e.printStackTrace();
                     }
