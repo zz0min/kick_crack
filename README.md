@@ -25,17 +25,22 @@
 
 ## 🛠 기술 스택
 
+### 📱 AI
+- Python
+- Pytorch
+- YOLOv8 (딥러닝으로 도로 균열 탐지)  
+- OpenCV (영상 처리)
+
 ### 📱 모바일 앱 (Android)
-- Kotlin  
+- Java  
 - Android SDK (Jetpack, ViewModel 등)  
 - Naver Maps API (지도, 경로 안내)  
 - Firebase Realtime Database (실시간 위험 구간 동기화)  
 - Bluetooth (라즈베리파이와 통신)
 
-### 🖥 서버 / 디바이스
+### 🖥 디바이스
 - Raspberry Pi (Python 기반)  
-- YOLOv8 (딥러닝으로 도로 균열 탐지)  
-- OpenCV (영상 처리)
+
 
 ### 🧑‍💻 기획 & 협업
 - Git / GitHub
